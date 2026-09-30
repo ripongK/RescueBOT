@@ -1,0 +1,2489 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>RESCUE-BOT — ภารกิจหุ่นยนต์กู้ภัย</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+<script>
+  // สำรอง: หาก CDN หลัก (jsDelivr) โหลดไม่สำเร็จ (เช่น เครือข่ายโรงเรียนบล็อก) ให้ลอง CDN สำรองอัตโนมัติ
+  window.addEventListener("error", function(e){
+    if(e.target && e.target.tagName === "SCRIPT" && /chart.*\.js/i.test(e.target.src) && !window.Chart && !window.__chartFallbackTried){
+      window.__chartFallbackTried = true;
+      var s = document.createElement("script");
+      s.src = "https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js";
+      document.head.appendChild(s);
+    }
+  }, true);
+</script>
+<style>
+/* ============ DESIGN TOKENS ============
+   Color: base #0F1720 (command-console navy), panel #16212C,
+   teal (SHOW/robot) #3FCFB4, amber (LEARN/field) #F2A93B,
+   safety-orange (APPLY/action) #FF6A39, ember (danger/fire) #E5484D,
+   signal-green (REFLECT/complete) #6FCF97, text #EAF2F1, muted #85A0AA
+   Type: Space Grotesk (headlines) / Inter (body) / IBM Plex Mono (telemetry data)
+*/
+:root{
+  --bg:#0F1720;
+  --panel:#16212C;
+  --panel-raised:#1C2A36;
+  --line:#26374380;
+  --line-strong:#2C3F4C;
+  --text:#EAF2F1;
+  --muted:#85A0AA;
+  --teal:#3FCFB4;
+  --amber:#F2A93B;
+  --orange:#FF6A39;
+  --ember:#E5484D;
+  --green:#6FCF97;
+  --font-head:'Space Grotesk',sans-serif;
+  --font-body:'Inter',sans-serif;
+  --font-mono:'IBM Plex Mono',monospace;
+}
+*{box-sizing:border-box;}
+html,body{margin:0;padding:0;}
+body{
+  background:var(--bg);
+  background-image:
+    linear-gradient(var(--line) 1px, transparent 1px),
+    linear-gradient(90deg, var(--line) 1px, transparent 1px);
+  background-size:36px 36px;
+  color:var(--text);
+  font-family:var(--font-body);
+  line-height:1.55;
+  min-height:100vh;
+}
+h1,h2,h3,h4{font-family:var(--font-head);margin:0 0 .4em 0;font-weight:600;letter-spacing:.01em;}
+p{margin:0 0 1em 0;}
+.mono{font-family:var(--font-mono);}
+button{font-family:var(--font-body);cursor:pointer;}
+::selection{background:var(--teal);color:#04211C;}
+
+#app{max-width:920px;margin:0 auto;padding:20px 18px 80px;}
+
+/* ---------- Status bar ---------- */
+.statusbar{
+  position:sticky;top:0;z-index:50;
+  display:flex;align-items:center;gap:14px;
+  background:rgba(15,23,32,.92);backdrop-filter:blur(6px);
+  border-bottom:1px solid var(--line-strong);
+  padding:10px 4px;margin:0 -18px 22px;padding-left:18px;padding-right:18px;
+}
+.statusbar .who{font-size:.82rem;color:var(--muted);white-space:nowrap;}
+.statusbar .who b{color:var(--text);font-weight:600;}
+.statusbar .phase-track{display:flex;gap:6px;flex:1;}
+.statusbar .phase-item{flex:1;display:flex;flex-direction:column;gap:4px;align-items:stretch;}
+.statusbar .phase-label{
+  font-size:.66rem;letter-spacing:.03em;color:var(--muted);text-align:center;
+  font-family:var(--font-mono);white-space:nowrap;
+}
+.statusbar .phase-item.active .phase-label{color:var(--teal);font-weight:600;}
+.statusbar .phase-item.done .phase-label{color:var(--text);}
+.statusbar .phase-dot{
+  height:6px;border-radius:3px;background:var(--line-strong);position:relative;overflow:hidden;
+}
+.statusbar .phase-dot.active{background:var(--teal);}
+.statusbar .phase-dot.done{background:var(--muted);}
+.statusbar .timer{font-family:var(--font-mono);font-size:.82rem;color:var(--amber);white-space:nowrap;}
+.statusbar .timer.low-time{color:var(--ember);}
+
+/* ---------- Panels / cards ---------- */
+.panel{
+  background:var(--panel);
+  border:1px solid var(--line-strong);
+  padding:26px 26px 24px;
+  margin-bottom:20px;
+  position:relative;
+}
+.panel::before{
+  content:"";position:absolute;top:0;left:0;right:0;height:3px;
+  background:var(--accent, var(--teal));
+}
+.panel.show-accent::before{background:var(--teal);}
+.panel.learn-accent::before{background:var(--amber);}
+.panel.apply-accent::before{background:var(--orange);}
+.panel.reflect-accent::before{background:var(--green);}
+
+.eyebrow{
+  display:inline-flex;align-items:center;gap:8px;
+  font-size:.78rem;color:var(--muted);margin-bottom:10px;
+}
+.eyebrow .dot{width:7px;height:7px;border-radius:50%;background:var(--accent,var(--teal));}
+
+.kicker-title{font-size:1.5rem;}
+.lede{color:var(--muted);font-size:.98rem;}
+
+/* ---------- Buttons ---------- */
+.btn{
+  border:1px solid var(--line-strong);
+  background:var(--panel-raised);
+  color:var(--text);
+  padding:11px 20px;
+  font-size:.94rem;
+  font-weight:600;
+  transition:transform .12s ease, border-color .12s ease, background .12s ease;
+}
+.btn:hover{border-color:var(--muted);transform:translateY(-1px);}
+.btn:active{transform:translateY(0);}
+.btn:disabled{opacity:.4;cursor:not-allowed;transform:none;}
+.btn-primary{background:var(--teal);border-color:var(--teal);color:#04241E;}
+.btn-primary:hover{background:#59DABF;border-color:#59DABF;}
+.btn-apply{background:var(--orange);border-color:var(--orange);color:#2A0D02;}
+.btn-apply:hover{background:#FF8A5E;border-color:#FF8A5E;}
+.btn-row{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-top:18px;}
+.btn-ghost{background:transparent;}
+
+/* ---------- Intro screen ---------- */
+.hero{
+  display:flex;flex-direction:column;align-items:center;text-align:center;
+  padding:38px 20px 10px;
+}
+.hero svg{width:min(460px,88vw);height:auto;margin-bottom:8px;filter:drop-shadow(0 12px 28px #00000055);}
+.hero h1{font-size:2.1rem;max-width:560px;}
+.hero .tag{color:var(--muted);max-width:520px;margin:0 auto 20px;}
+.field-row{display:flex;flex-direction:column;gap:6px;margin-bottom:16px;text-align:left;}
+.field-row label{font-size:.86rem;color:var(--muted);}
+.field-row input, .field-row select{
+  background:var(--panel-raised);border:1px solid var(--line-strong);color:var(--text);
+  padding:11px 12px;font-size:1rem;font-family:var(--font-body);
+}
+.field-row input:focus, .field-row select:focus{outline:2px solid var(--teal);outline-offset:1px;}
+.form-card{max-width:380px;width:100%;margin:0 auto;background:var(--panel-raised);border:1px solid var(--line-strong);padding:22px;}
+.mission-brief{
+  text-align:left;font-size:.86rem;color:var(--muted);margin-top:18px;padding:14px 16px;
+  border-left:3px solid var(--amber);background:#1B140B33;
+}
+
+/* ---------- Progress ---------- */
+.progress-wrap{margin:16px 0 4px;}
+.progress-track{height:8px;background:var(--panel-raised);border:1px solid var(--line-strong);}
+.progress-fill{height:100%;background:var(--teal);transition:width .3s ease;}
+.progress-label{font-size:.78rem;color:var(--muted);margin-top:6px;font-family:var(--font-mono);}
+
+/* ---------- Quiz (SHOW / LEARN checks) ---------- */
+.q-index{font-family:var(--font-mono);color:var(--muted);font-size:.82rem;margin-bottom:6px;}
+.q-text{font-size:1.15rem;margin-bottom:18px;}
+.choices{display:flex;flex-direction:column;gap:10px;}
+.choice{
+  display:flex;align-items:center;gap:12px;
+  border:1px solid var(--line-strong);padding:13px 15px;
+  background:var(--panel-raised);
+  transition:border-color .12s ease, background .12s ease;
+}
+.choice:hover{border-color:var(--teal);}
+.choice input{accent-color:var(--teal);width:16px;height:16px;flex-shrink:0;}
+.choice.selected{border-color:var(--teal);background:#123832;}
+.choice label{flex:1;cursor:pointer;font-size:.96rem;}
+
+/* ---------- Learn ---------- */
+.concept-tag{
+  display:inline-block;font-size:.74rem;color:var(--amber);
+  border:1px solid var(--amber);padding:2px 9px;margin-bottom:12px;
+}
+.chart-box{background:var(--panel-raised);border:1px solid var(--line-strong);padding:16px;margin:16px 0;height:260px;}
+
+/* ---------- Drag & drop (LEARN tasks 7-8) ---------- */
+.dd-hint{font-size:.8rem;color:var(--muted);margin:14px 0 8px;}
+.dropzone{
+  min-height:42px;display:flex;align-items:center;justify-content:center;
+  border:2px dashed var(--line-strong);background:#12181F;
+  padding:6px 10px;font-size:.86rem;color:var(--muted);text-align:center;
+  transition:border-color .12s ease, background .12s ease;
+}
+.dropzone.over{border-color:var(--amber);background:#221a0d;}
+.dropzone.filled{border-style:solid;border-color:var(--amber);background:#241d10;color:var(--text);cursor:pointer;}
+.dropzone.filled:hover{border-color:var(--ember);}
+.chip{
+  display:inline-block;border:1px solid var(--line-strong);background:var(--panel-raised);
+  color:var(--text);padding:8px 13px;font-size:.85rem;cursor:grab;
+  transition:border-color .12s ease, transform .1s ease;
+}
+.chip:hover{border-color:var(--amber);transform:translateY(-1px);}
+.chip.selected{border-color:var(--amber);background:#2a2110;box-shadow:0 0 0 2px #F2A93B55;}
+.chip.cond{border-radius:16px;border-color:#3FCFB480;}
+.chip.cond.selected{border-color:var(--amber);}
+.chip-pool{display:flex;flex-wrap:wrap;gap:9px;padding:14px;background:#12181F;border:1px solid var(--line-strong);}
+.chip-pool.empty::after{content:"วางครบทุกช่องแล้ว";color:var(--muted);font-size:.84rem;}
+
+/* circuit workbench (Tinkercad-style) */
+.tinker-wrap{
+  background:#0C1218;border:1px solid var(--line-strong);margin:16px 0;overflow:hidden;
+}
+.tinker-bar{
+  display:flex;align-items:center;gap:10px;padding:8px 12px;
+  background:#16212C;border-bottom:1px solid var(--line-strong);font-size:.78rem;color:var(--muted);
+}
+.tinker-bar .tdot{width:9px;height:9px;border-radius:50%;}
+.tinker-canvas{
+  position:relative;width:100%;aspect-ratio:16/10;min-height:330px;
+  background-color:#0C1218;
+  background-image:radial-gradient(#1E2C38 1px, transparent 1px);
+  background-size:16px 16px;
+}
+.tinker-canvas svg{position:absolute;inset:0;width:100%;height:100%;}
+.tk-slot{
+  position:absolute;transform:translate(-50%,-50%);
+  display:flex;align-items:center;justify-content:center;text-align:center;
+  font-size:.72rem;line-height:1.25;padding:5px 7px;
+  border:2px dashed #3A4D5C;background:#121C24EE;color:var(--muted);
+  cursor:pointer;transition:border-color .12s ease,background .12s ease;
+}
+.tk-slot.over{border-color:var(--amber);background:#241d10EE;}
+.tk-slot.filled{border-style:solid;border-color:var(--amber);background:#241d10EE;color:var(--text);}
+.tk-slot.filled:hover{border-color:var(--ember);}
+.tk-pin{
+  position:absolute;transform:translate(-50%,-50%);
+  font-family:var(--font-mono);font-size:.64rem;color:var(--teal);
+  background:#0C1218;padding:1px 4px;border:1px solid #2C3F4C;
+}
+.tk-caption{font-size:.74rem;color:var(--muted);padding:8px 12px;border-top:1px solid var(--line-strong);background:#101A22;}
+
+/* block program test panel */
+.run-bar{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:14px 0 10px;}
+.btn-run{background:var(--green);border-color:var(--green);color:#06230F;font-weight:700;}
+.btn-run:hover{background:#8BDCAD;border-color:#8BDCAD;}
+.run-count{font-family:var(--font-mono);font-size:.82rem;color:var(--muted);}
+.run-result{border:1px solid var(--line-strong);padding:14px 16px;margin-bottom:12px;background:var(--panel-raised);}
+.run-result.ok{border-left:4px solid var(--green);}
+.run-result.fail{border-left:4px solid var(--ember);}
+.run-result .rr-title{font-weight:700;margin-bottom:6px;}
+.run-result.ok .rr-title{color:var(--green);}
+.run-result.fail .rr-title{color:var(--ember);}
+.run-result .rr-detail{font-size:.84rem;color:var(--muted);}
+.run-log{font-family:var(--font-mono);font-size:.74rem;color:var(--muted);margin-top:8px;max-height:96px;overflow-y:auto;}
+/* circuit progress + fire gauges */
+.circ-progress{background:var(--panel-raised);border:1px solid var(--line-strong);padding:12px 14px;margin:14px 0 4px;}
+.cp-head{display:flex;justify-content:space-between;align-items:center;font-size:.84rem;margin-bottom:8px;}
+.cp-pct{color:var(--amber);font-weight:600;}
+.cp-track{height:9px;background:#12181F;border:1px solid var(--line-strong);}
+.cp-fill{height:100%;background:var(--amber);transition:width .25s ease;}
+.cp-fill.done{background:var(--green);}
+.tk-bar-hint{font-size:.72rem;}
+.fire-gauges{background:var(--panel-raised);border:1px solid var(--line-strong);padding:14px;margin:14px 0;}
+.gauge-row{display:grid;grid-template-columns:150px 1fr 62px;gap:10px;align-items:center;margin-bottom:9px;}
+.gauge-label{font-size:.82rem;color:var(--muted);}
+.gauge-track{height:14px;background:#12181F;border:1px solid var(--line-strong);overflow:hidden;}
+.gauge-fill{height:100%;transition:width .3s ease, background .3s ease;}
+.gauge-fill.hot{background:var(--ember);}
+.gauge-fill.warm{background:var(--amber);}
+.gauge-fill.safe{background:var(--green);}
+.gauge-fill.water{background:#4FA3E3;}
+.gauge-val{font-size:.84rem;text-align:right;color:var(--text);}
+.gauge-legend{font-size:.76rem;color:var(--muted);margin-top:6px;}
+@media (max-width:560px){ .gauge-row{grid-template-columns:110px 1fr 54px;gap:7px;} .gauge-label{font-size:.72rem;} }
+.gm-cell.path{background:#1B3A46;border-color:#3FCFB466;}
+.gm-cell.final{outline:2px solid var(--amber);outline-offset:-2px;}
+.gm-cell{transition:background .18s ease, outline-color .18s ease;}
+.anim-status{
+  display:flex;align-items:center;gap:9px;font-size:.84rem;color:var(--text);
+  background:#12242B;border:1px solid #3FCFB455;border-left:4px solid var(--teal);
+  padding:10px 14px;margin:10px 0;
+}
+.anim-dot{
+  width:9px;height:9px;border-radius:50%;background:var(--teal);flex:0 0 auto;
+  animation:animPulse 1s ease-in-out infinite;
+}
+@keyframes animPulse{0%,100%{opacity:1;}50%{opacity:.25;}}
+@media (prefers-reduced-motion: reduce){ .anim-dot{animation:none;} .gm-cell{transition:none;} }
+
+/* block program */
+.block-prog{background:#12181F;border:1px solid var(--line-strong);padding:16px;margin:16px 0;font-size:.9rem;}
+.block-row{display:flex;align-items:center;gap:8px;margin-bottom:8px;flex-wrap:wrap;}
+.block-row .bl-text{color:var(--text);}
+.block-row .bl-kw{color:var(--amber);font-weight:600;}
+.block-row .dropzone{min-width:190px;flex:0 1 auto;}
+.blk-indent-1{margin-left:22px;border-left:2px solid #2C3F4C;padding-left:12px;}
+.blk-indent-2{margin-left:44px;border-left:2px solid #2C3F4C;padding-left:12px;}
+.blk-indent-3{margin-left:66px;border-left:2px solid #3FCFB455;padding-left:12px;}
+.grid-map{display:grid;grid-template-columns:repeat(6,1fr);gap:3px;max-width:230px;margin:14px auto 4px;}
+.gm-cell{aspect-ratio:1;background:#1C2A36;border:1px solid #26374380;display:flex;align-items:center;justify-content:center;font-size:.8rem;}
+.gm-cell.obstacle{background:#3A2417;border-color:#FF6A3966;}
+.gm-cell.bot{background:#FF6A3933;border-color:var(--orange);}
+.gm-cell.valve{background:#12321F;border-color:var(--green);}
+.grid-legend{font-size:.76rem;color:var(--muted);text-align:center;margin-bottom:4px;}
+
+/* ---------- Apply ---------- */
+.factor-slider{margin-bottom:16px;}
+.factor-slider .fs-head{display:flex;justify-content:space-between;font-size:.88rem;margin-bottom:6px;}
+.factor-slider .fs-head b{color:var(--text);}
+.factor-slider .fs-head span{font-family:var(--font-mono);color:var(--orange);}
+input[type=range]{
+  width:100%;height:6px;border-radius:3px;background:var(--line-strong);
+  -webkit-appearance:none;appearance:none;
+}
+input[type=range]::-webkit-slider-thumb{
+  -webkit-appearance:none;width:18px;height:18px;border-radius:50%;
+  background:var(--orange);cursor:pointer;border:2px solid #1B0A02;
+}
+input[type=range]::-moz-range-thumb{
+  width:18px;height:18px;border-radius:50%;background:var(--orange);border:2px solid #1B0A02;cursor:pointer;
+}
+.accuracy-readout{
+  display:flex;align-items:center;justify-content:space-between;
+  background:var(--panel-raised);border:1px solid var(--line-strong);
+  padding:14px 18px;margin:16px 0;
+}
+.accuracy-readout .num{font-family:var(--font-mono);font-size:1.7rem;font-weight:600;color:var(--orange);}
+.accuracy-readout.perfect .num{color:var(--green);}
+.mission-table{width:100%;border-collapse:collapse;font-size:.84rem;margin-top:10px;}
+.mission-table th, .mission-table td{
+  text-align:left;padding:7px 8px;border-bottom:1px solid var(--line-strong);
+}
+.mission-table th{color:var(--muted);font-weight:600;font-size:.76rem;}
+.tag-pill{display:inline-block;padding:2px 9px;font-size:.74rem;font-family:var(--font-mono);}
+.tag-Low{background:#123832;color:var(--teal);}
+.tag-Medium{background:#2E260F;color:var(--amber);}
+.tag-High{background:#3A1414;color:var(--ember);}
+.tag-GO{background:#123832;color:var(--teal);}
+.tag-WAIT{background:#3A1414;color:var(--ember);}
+.match-yes{color:var(--green);}
+.match-no{color:var(--ember);}
+
+/* ---------- Reflect ---------- */
+.likert-item{margin-bottom:20px;}
+.likert-item p{margin-bottom:10px;font-size:.96rem;}
+.likert-scale{display:flex;gap:8px;flex-wrap:wrap;}
+.likert-opt{flex:1;min-width:80px;text-align:center;}
+.likert-opt input{display:none;}
+.likert-opt span{
+  display:block;border:1px solid var(--line-strong);padding:9px 4px;font-size:.78rem;
+  background:var(--panel-raised);color:var(--muted);
+}
+.likert-opt input:checked + span{border-color:var(--green);background:#12321F;color:var(--green);}
+textarea{
+  width:100%;background:var(--panel-raised);border:1px solid var(--line-strong);color:var(--text);
+  padding:12px;font-family:var(--font-body);font-size:.94rem;min-height:88px;resize:vertical;
+}
+textarea:focus{outline:2px solid var(--green);outline-offset:1px;}
+.word-count{font-size:.76rem;color:var(--muted);text-align:right;font-family:var(--font-mono);margin-top:4px;}
+
+/* ---------- Report ---------- */
+.score-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:14px;margin:18px 0;}
+.score-card{background:var(--panel-raised);border:1px solid var(--line-strong);padding:16px;}
+.score-card .label{font-size:.78rem;color:var(--muted);margin-bottom:6px;}
+.score-card .val{font-family:var(--font-mono);font-size:1.6rem;font-weight:600;}
+.overall-band{
+  text-align:center;padding:28px 20px;margin:20px 0;border:1px solid var(--line-strong);
+  background:linear-gradient(180deg,var(--panel-raised),var(--panel));
+}
+.overall-band .level{font-family:var(--font-head);font-size:2.4rem;margin:6px 0;}
+.overall-band .score-big{font-family:var(--font-mono);font-size:1rem;color:var(--muted);}
+.L4{color:var(--green);} .L3{color:var(--teal);} .L2{color:var(--amber);} .L1{color:var(--ember);}
+.hist-table{width:100%;border-collapse:collapse;font-size:.82rem;margin-top:10px;}
+.hist-table th,.hist-table td{padding:8px;border-bottom:1px solid var(--line-strong);text-align:left;}
+.hist-table th{color:var(--muted);font-size:.74rem;}
+.save-status{font-size:.82rem;color:var(--muted);margin-top:10px;font-family:var(--font-mono);line-height:1.5;}
+.save-status.ok{color:var(--green);}
+.save-status.warn{color:var(--amber);}
+.save-status.fail{color:var(--ember);}
+.hidden{display:none !important;}
+.help-note{font-size:.82rem;color:var(--muted);margin-top:12px;padding:10px 14px;border-left:3px solid var(--teal);background:#0E2A2833;}
+@media (max-width:560px){
+  .hero h1{font-size:1.5rem;}
+  .panel{padding:20px 16px;}
+  .statusbar{gap:8px;}
+  .statusbar .who{font-size:.72rem;}
+  .statusbar .phase-label{font-size:.58rem;}
+}
+</style>
+</head>
+<body>
+<div id="app"></div>
+
+<script>
+/* =========================================================
+   RESCUE-BOT — PISA LDW Practice Test
+   Config
+   ========================================================= */
+const CONFIG = {
+  // Web App (Apps Script) แบบ universal logger — ดูไฟล์ code.gs ที่ผูกกับสเปรดชีตนี้
+  webhookUrl: "https://script.google.com/macros/s/AKfycby-EQrWXlKE8-zo7JK1DAwytJ5F5Jb8NtbHfo1OmoNwnzVnsWYiFOhtNKM0x_xGEmCg/exec",
+  // ชื่อแท็บปลายทางในสเปรดชีต — universal logger จะสร้างแท็บนี้ให้เองถ้ายังไม่มี
+  sheetName: "Sheet12",
+  // ID ของสเปรดชีตปลายทาง (บันทึกไว้อ้างอิงเท่านั้น ฝั่ง Apps Script ผูกกับไฟล์นี้อยู่แล้ว)
+  spreadsheetId: "1OKDPtv0m34GGKHnnQfK8lhTctgvNX-2vH21Z1wJxNeE",
+  scenario: "RESCUE-BOT ภารกิจหุ่นยนต์กู้ภัยในเขตภัยพิบัติ",
+  totalMinutes: 30,
+  historyKey: "rescuebot_history_v1"
+};
+
+/* =========================================================
+   DATA — SHOW (5 ข้อ)
+   ========================================================= */
+const SHOW_QUESTIONS = [
+  {
+    id:"s1",
+    text:"เมื่อสั่งงาน RESCUE-BOT ด้วยคำสั่ง moveForward(); turnRight(); moveForward(); เรียงต่อกันแบบนี้ เรียกว่าโครงสร้างแบบใด",
+    choices:["การวนซ้ำ (loop)","ลำดับคำสั่ง (sequence)","เงื่อนไข (conditional)","กระบวนงานย่อย (procedure)"],
+    correct:1
+  },
+  {
+    id:"s2",
+    text:"คำสั่ง repeat(4){ moveForward(); } มีความหมายตรงกับข้อใดมากที่สุด",
+    choices:[
+      "เดินหน้า 1 ครั้ง แล้วหยุดรอ 4 วินาที",
+      "เดินหน้าซ้ำกัน 4 ครั้งติดต่อกัน",
+      "เดินหน้าเฉพาะเมื่อพบสิ่งกีดขวาง 4 ช่อง",
+      "สร้างกระบวนงานใหม่ชื่อว่า 4"
+    ],
+    correct:1
+  },
+  {
+    id:"s3",
+    text:"ในแผนที่กริดของพื้นที่ภัยพิบัติ หากหุ่นยนต์อยู่ที่ช่อง (แถว 2, คอลัมน์ 3) แล้วเดินหน้าไปอีก 1 ช่องในทิศที่หันอยู่ ตำแหน่งใหม่ขึ้นอยู่กับสิ่งใดเป็นหลัก",
+    choices:[
+      "สีของช่องเดิม","ทิศทางที่หุ่นยนต์กำลังหันอยู่ในขณะนั้น","ชื่อของผู้เขียนโปรแกรม","จำนวนผู้ประสบภัยทั้งหมด"
+    ],
+    correct:1
+  },
+  {
+    id:"s4",
+    text:"คำสั่งเงื่อนไข if (fireDetected()) { turnLeft(); } ใช้ทำอะไร",
+    choices:[
+      "ทำให้หุ่นยนต์เลี้ยวซ้ายเสมอทุกครั้งที่เดิน",
+      "ตรวจสอบสถานการณ์ก่อน แล้วเลือกทำคำสั่งเฉพาะเมื่อเงื่อนไขเป็นจริง",
+      "ปิดการทำงานของหุ่นยนต์ทันที",
+      "บันทึกข้อมูลไฟไหม้ลงฐานข้อมูล"
+    ],
+    correct:1
+  },
+  {
+    id:"s5",
+    text:"ทำไมระบบประเมินความเสี่ยงภารกิจกู้ภัยจึงมักใช้ 'คะแนนความเสี่ยงรวม' จากหลายปัจจัย แทนที่จะตัดสินจากปัจจัยเดียว",
+    choices:[
+      "เพราะคำนวณง่ายกว่าการใช้ปัจจัยเดียว",
+      "เพราะปัจจัยเดียวมักไม่เพียงพอต่อการสะท้อนความเสี่ยงจริงที่เกิดจากหลายสาเหตุร่วมกัน",
+      "เพราะกฎหมายบังคับให้ใช้อย่างน้อย 5 ปัจจัยเท่านั้น",
+      "เพราะหุ่นยนต์คำนวณเลขจำนวนเดียวไม่ได้"
+    ],
+    correct:1
+  }
+];
+
+/* =========================================================
+   DATA — LEARN (6 ภาระงานต่อเนื่อง)
+   ========================================================= */
+const LEARN_TASKS = [
+  {
+    id:"l1",
+    concept:"ลำดับคำสั่ง (Sequence) · moveForward()",
+    title:"ภาระงานที่ 1 — เส้นทางและพลังงานที่ใช้",
+    text:"ทุกครั้งที่ RESCUE-BOT สั่ง moveForward() หนึ่งครั้ง จะใช้พลังงานคงที่ต่อช่อง ระยะทางจากจุดเริ่มต้นถึงผู้ประสบภัยจึงแปรผันตรงกับพลังงานที่ใช้ กราฟด้านล่างแสดงพลังงานที่ใช้จริงของ 6 เส้นทางตัวอย่าง เทียบกับจำนวนช่องที่เดิน",
+    chart:{type:"line", labels:["เส้นทาง A","เส้นทาง B","เส้นทาง C","เส้นทาง D","เส้นทาง E","เส้นทาง F"],
+      datasets:[{label:"พลังงานที่ใช้ (%)", data:[12,24,36,48,60,72], color:"#3FCFB4"}]},
+    question:{
+      text:"จากกราฟ ถ้าเส้นทางหนึ่งต้องเดิน 9 ช่อง (moveForward() 9 ครั้ง) และแต่ละช่องใช้พลังงานเท่ากับที่กราฟแสดง คาดว่าจะใช้พลังงานประมาณเท่าใด",
+      choices:["36%","72%","108%","24%"],
+      correct:2
+    }
+  },
+  {
+    id:"l2",
+    concept:"การวนซ้ำ (Loop) · scanArea()",
+    title:"ภาระงานที่ 2 — ความถี่จุดเสี่ยงที่ต้องผ่าน",
+    text:"หุ่นยนต์ใช้ scanArea() ภายใน repeat(N){ } เพื่อตรวจจุดเสี่ยงระหว่างทางซ้ำ ๆ ทุกช่อง ยิ่งภารกิจต้องผ่านจุดเสี่ยงบ่อย ยิ่งต้องวนซ้ำการสแกนมากขึ้น กราฟแท่งแสดงจำนวนจุดเสี่ยงที่พบใน 8 ภารกิจตัวอย่าง",
+    chart:{type:"bar", labels:["ภารกิจ 1","ภารกิจ 2","ภารกิจ 3","ภารกิจ 4","ภารกิจ 5","ภารกิจ 6","ภารกิจ 7","ภารกิจ 8"],
+      datasets:[{label:"จำนวนจุดเสี่ยงที่พบ (ครั้ง)", data:[2,5,8,3,7,4,9,6], color:"#F2A93B"}]},
+    question:{
+      text:"ภารกิจใดที่โปรแกรมควรใช้ repeat(N) โดย N มีค่ามากที่สุดสำหรับ scanArea() เพื่อให้ครอบคลุมจุดเสี่ยงทั้งหมด",
+      choices:["ภารกิจ 3","ภารกิจ 7","ภารกิจ 4","ภารกิจ 1"],
+      correct:1
+    }
+  },
+  {
+    id:"l3",
+    concept:"เงื่อนไข (Conditional) · if(fireDetected())",
+    title:"ภาระงานที่ 3 — ตำแหน่งไฟและความเร็วการลาม",
+    text:"ก่อนตัดสินใจเดินต่อ หุ่นยนต์ต้องเช็คเงื่อนไข if(fireDetected()) โดยพิจารณาทั้งระยะห่างจากไฟและความเร็วการลามของไฟในโซนนั้น กราฟแท่งเปรียบเทียบทั้งสองค่าใน 8 โซน",
+    chart:{type:"bar", labels:["โซน A","โซน B","โซน C","โซน D","โซน E","โซน F","โซน G","โซน H"],
+      datasets:[
+        {label:"ระยะห่างจากไฟ (เมตร)", data:[35,10,60,18,50,25,8,42], color:"#3FCFB4"},
+        {label:"ความเร็วการลาม (ระดับ)", data:[40,85,20,65,30,55,90,35], color:"#E5484D"}
+      ]},
+    question:{
+      text:"โซนใดที่เงื่อนไข if(fireDetected()) ควรสั่งให้หุ่นยนต์ 'หลีกเลี่ยงทันที' มากที่สุด (ระยะใกล้ไฟ + ไฟลามเร็ว)",
+      choices:["โซน C","โซน G","โซน E","โซน A"],
+      correct:1
+    }
+  },
+  {
+    id:"l4",
+    concept:"กระบวนงานย่อย (Procedure) · checkStructure()",
+    title:"ภาระงานที่ 4 — สถานะความมั่นคงของโครงสร้าง",
+    text:"แทนที่จะเขียนคำสั่งตรวจโครงสร้างซ้ำทุกจุด โปรแกรมสามารถนิยามกระบวนงานย่อย checkStructure() ไว้ครั้งเดียวแล้วเรียกใช้ซ้ำได้ทุกจุดที่ต้องผ่านอาคาร กราฟแท่งแสดงผลลัพธ์การเรียก checkStructure() ใน 8 อาคาร",
+    chart:{type:"bar", labels:["อาคาร 1","อาคาร 2","อาคาร 3","อาคาร 4","อาคาร 5","อาคาร 6","อาคาร 7","อาคาร 8"],
+      datasets:[{label:"คะแนนความไม่มั่นคง (0-100)", data:[15,72,30,88,45,20,65,10], color:"#FF6A39"}]},
+    question:{
+      text:"เพราะเหตุใดการเขียนเป็นกระบวนงานย่อย checkStructure() แทนการเขียนคำสั่งตรวจซ้ำทุกจุด จึงเป็นแนวทางที่ดีกว่า",
+      choices:[
+        "เพราะทำให้หุ่นยนต์เดินเร็วขึ้นโดยอัตโนมัติ",
+        "เพราะลดการเขียนคำสั่งซ้ำซ้อนและแก้ไขจุดเดียวมีผลกับทุกจุดที่เรียกใช้",
+        "เพราะเปลี่ยนสีของอาคารในกราฟ",
+        "เพราะทำให้พลังงานแบตเตอรี่เพิ่มขึ้น"
+      ],
+      correct:1
+    }
+  },
+  {
+    id:"l5",
+    concept:"เงื่อนไข + การวนซ้ำร่วมกัน · เส้นทางปรับตัวได้",
+    title:"ภาระงานที่ 5 — พฤติกรรมเบี่ยงเบนจากแผนเดิม",
+    text:"เมื่อเจอสิ่งกีดขวางที่ไม่ได้วางแผนไว้ หุ่นยนต์ต้องใช้ทั้ง loop และ if ร่วมกันเพื่อ 'เบี่ยงเส้นทาง' ชั่วคราวแล้ววนกลับเข้าเส้นทางเดิม กราฟเส้นคู่แสดงระยะห่างจากเส้นทางที่วางแผนไว้ (แผน) เทียบกับเส้นทางจริงที่หุ่นยนต์เดิน (จริง) ตลอด 10 ช่วงเวลา",
+    chart:{type:"line", labels:["t1","t2","t3","t4","t5","t6","t7","t8","t9","t10"],
+      datasets:[
+        {label:"เส้นทางตามแผน (ระยะเบี่ยงเบน=0)", data:[0,0,0,0,0,0,0,0,0,0], color:"#85A0AA"},
+        {label:"เส้นทางจริงของหุ่นยนต์", data:[0,1,3,6,4,2,1,0,0,0], color:"#F2A93B"}
+      ]},
+    question:{
+      text:"ช่วงเวลาใดที่ค่าความเบี่ยงเบนสูงสุด แสดงว่าหุ่นยนต์กำลังอยู่ในโหมดหลีกเลี่ยงสิ่งกีดขวางมากที่สุด",
+      choices:["t3","t4","t8","t1"],
+      correct:1
+    }
+  },
+  {
+    id:"l6",
+    concept:"การสังเคราะห์คะแนนความเสี่ยงรวม (Composite Risk Score)",
+    title:"ภาระงานที่ 6 — คะแนนความเสี่ยงภารกิจโดยรวม",
+    text:"กระบวนงาน computeMissionRisk() รวม 5 ปัจจัย (พลังงานที่ต้องใช้, ความถี่จุดเสี่ยง, ตำแหน่ง/ความเร็วไฟ, ความไม่มั่นคงของโครงสร้าง, ความเบี่ยงเบนเส้นทาง) เข้าด้วยกันเป็นคะแนนเดียว 0-100 เพื่อจัดระดับภารกิจเป็นต่ำ/ปานกลาง/สูง กราฟเส้นแสดงคะแนนรวมของ 8 ภารกิจตัวอย่างเมื่อใช้ค่าน้ำหนักเริ่มต้นเท่ากันทุกปัจจัย",
+    chart:{type:"line", labels:["M1","M2","M3","M4","M5","M6","M7","M8"],
+      datasets:[{label:"คะแนนความเสี่ยงรวม (น้ำหนักเท่ากัน)", data:[46.0,39.0,11.0,53.0,49.6,42.0,46.4,37.6], color:"#FF6A39"}]},
+    question:{
+      text:"ในขั้นตอน APPLY ถัดไป หากพบว่าน้ำหนักเท่ากันทุกปัจจัยให้ผลการจัดระดับผิดพลาดในหลายภารกิจ ควรทำอย่างไรจึงจะสมเหตุสมผลที่สุด",
+      choices:[
+        "ยกเลิกการใช้คะแนนรวม แล้วเดาผลแทน",
+        "ปรับน้ำหนักให้ปัจจัยที่ส่งผลต่อความเสี่ยงจริงมากกว่า (เช่น ไฟ/โครงสร้าง) มีอิทธิพลต่อคะแนนมากขึ้น",
+        "เพิ่มจำนวนภารกิจตัวอย่างให้มากขึ้นโดยไม่แก้น้ำหนัก",
+        "เปลี่ยนหน่วยของกราฟจากเปอร์เซ็นต์เป็นจำนวนเต็ม"
+      ],
+      correct:1
+    }
+  },
+  {
+    id:"l7", kind:"circuit",
+    concept:"ระบบย่อยของหุ่นยนต์ · การต่อวงจร Arduino + เซนเซอร์ + มอเตอร์",
+    title:"ภาระงานที่ 7 — ต่อวงจรระบบตรวจจับสิ่งกีดขวางและขับเคลื่อน",
+    text:"ก่อนที่ RESCUE-BOT จะหลบสิ่งกีดขวางได้เอง ต้องมีวงจรที่ครบสมบูรณ์ก่อน คือ เซนเซอร์ต้องอ่านระยะห่างของสิ่งกีดขวางส่งเข้าบอร์ด Arduino แล้ว Arduino สั่งโมดูลขับมอเตอร์ให้ควบคุมมอเตอร์ทั้งสองตัว ให้ลากอุปกรณ์และสายเชื่อมต่อทางด้านล่าง ไปวางในช่องว่างของผังวงจรให้ครบทุกช่อง เพื่อให้ระบบทำงานได้สมบูรณ์",
+    slots:[
+      {id:"s1", zone:"flow", label:"อุปกรณ์ตรวจจับสิ่งกีดขวาง", correct:"i_hcsr04"},
+      {id:"s2", zone:"flow", label:"วงจรรับคำสั่งไปขับมอเตอร์", correct:"i_l298n"},
+      {id:"s3", zone:"row", label:"ขาที่ Arduino ใช้ส่งสัญญาณออกไปกระตุ้นเซนเซอร์ (TRIG)", correct:"i_d8"},
+      {id:"s4", zone:"row", label:"ขาที่ Arduino ใช้รับสัญญาณสะท้อนกลับจากเซนเซอร์ (ECHO)", correct:"i_d9"},
+      {id:"s5", zone:"row", label:"แหล่งจ่ายไฟสำหรับมอเตอร์ (แยกจากไฟบอร์ด เพื่อไม่ให้บอร์ดรีเซ็ต)", correct:"i_batt"},
+      {id:"s6", zone:"row", label:"สายที่ต้องต่อร่วมกันทุกอุปกรณ์ เพื่อให้ใช้ระดับแรงดันอ้างอิงเดียวกัน", correct:"i_gnd"}
+    ],
+    items:[
+      {id:"i_hcsr04", label:"เซนเซอร์อัลตราโซนิก HC-SR04"},
+      {id:"i_l298n", label:"โมดูลขับมอเตอร์ L298N"},
+      {id:"i_d8", label:"ขาดิจิทัล D8 (OUTPUT)"},
+      {id:"i_d9", label:"ขาดิจิทัล D9 (INPUT)"},
+      {id:"i_batt", label:"แบตเตอรี่ 12V แยกวงจรมอเตอร์"},
+      {id:"i_gnd", label:"สาย GND ร่วม (common ground)"},
+      {id:"i_lcd", label:"จอ LCD 16×2"},
+      {id:"i_a0", label:"ขาอนาล็อก A0 (อ่านค่าแรงดัน)"},
+      {id:"i_buzzer", label:"ลำโพงบัซเซอร์แจ้งเตือน"}
+    ],
+    board:{
+      title:"RESCUE-BOT · Drive & Obstacle Workbench",
+      okMessage:"เซนเซอร์อ่านระยะได้ ส่งค่าเข้าบอร์ดทางขา ECHO บอร์ดสั่งโมดูลขับมอเตอร์ และมอเตอร์ทั้งสองตัวหมุนได้ตามคำสั่ง — ระบบตรวจจับสิ่งกีดขวางและขับเคลื่อนพร้อมใช้งาน",
+      caption:"สายไฟจะเปลี่ยนจากเส้นประเป็นเส้นทึบเมื่อวางชิ้นส่วนลงในช่องแล้ว (แสดงว่าต่อวงจรครบ — ยังไม่ได้บอกว่าถูกหรือผิด จนกว่าจะกดทดสอบระบบ) · สีส้ม = สัญญาณ TRIG · สีเขียว = สัญญาณ ECHO · สีแดง = ไฟเลี้ยงมอเตอร์ · สีเทา = กราวด์ร่วม",
+      slots:[
+        {id:"s1", left:27, top:13, w:"150px", h:"58px", ph:"ช่องวางเซนเซอร์"},
+        {id:"s2", left:70, top:48, w:"150px", h:"62px", ph:"ช่องวางโมดูลขับมอเตอร์"},
+        {id:"s5", left:15.5, top:81, w:"140px", h:"50px", ph:"ช่องวางแหล่งจ่ายไฟมอเตอร์"},
+        {id:"s3", left:11, top:41, w:"140px", h:"44px", ph:"🟧 สายสัญญาณ TRIG"},
+        {id:"s4", left:11, top:55, w:"140px", h:"44px", ph:"🟩 สายสัญญาณ ECHO"},
+        {id:"s6", left:40, top:93, w:"150px", h:"40px", ph:"สายกราวด์ร่วม"}
+      ],
+      pins:[{label:"D8", left:44, top:33.5},{label:"D9", left:49, top:33.5},{label:"5V / GND", left:45.5, top:66.5}],
+      svg:(wireStyle)=>`
+    <svg viewBox="0 0 800 500" preserveAspectRatio="xMidYMid meet" xmlns="http://www.w3.org/2000/svg">
+      <rect x="310" y="185" width="190" height="130" rx="8" fill="#1B6F63" stroke="#0B1017" stroke-width="3"/>
+      <rect x="322" y="197" width="166" height="26" rx="3" fill="#0F4A42"/>
+      <text x="405" y="215" text-anchor="middle" fill="#C9F2EA" font-size="15" font-family="monospace">ARDUINO UNO</text>
+      <rect x="370" y="245" width="70" height="26" rx="3" fill="#12181F" stroke="#0B1017" stroke-width="2"/>
+      <circle cx="380" cy="258" r="3" fill="#3A4D5C"/>
+      <rect x="322" y="176" width="166" height="12" rx="2" fill="#12181F" stroke="#0B1017" stroke-width="1.5"/>
+      <rect x="322" y="312" width="120" height="12" rx="2" fill="#12181F" stroke="#0B1017" stroke-width="1.5"/>
+      <rect x="296" y="200" width="22" height="30" rx="3" fill="#8A99A5" stroke="#0B1017" stroke-width="2"/>
+      <rect x="296" y="262" width="20" height="26" rx="4" fill="#12181F" stroke="#0B1017" stroke-width="2"/>
+      <rect x="668" y="150" width="86" height="46" rx="8" fill="#2A3742" stroke="#0B1017" stroke-width="3"/>
+      <circle cx="668" cy="173" r="11" fill="#12181F" stroke="#0B1017" stroke-width="2.5"/>
+      <text x="716" y="178" text-anchor="middle" fill="#B9C9D2" font-size="12" font-family="monospace">MOTOR L</text>
+      <rect x="668" y="300" width="86" height="46" rx="8" fill="#2A3742" stroke="#0B1017" stroke-width="3"/>
+      <circle cx="668" cy="323" r="11" fill="#12181F" stroke="#0B1017" stroke-width="2.5"/>
+      <text x="716" y="328" text-anchor="middle" fill="#B9C9D2" font-size="12" font-family="monospace">MOTOR R</text>
+      <path d="M352,176 L352,120 L200,120 L200,96" fill="none" style="${wireStyle("s3","#F2A93B")}" stroke-linecap="round"/>
+      <path d="M392,176 L392,140 L236,140 L236,96" fill="none" style="${wireStyle("s4","#3FCFB4")}" stroke-linecap="round"/>
+      <path d="M460,176 L460,128 L560,128 L560,168" fill="none" style="${wireStyle("s2","#C77DFF")}" stroke-linecap="round"/>
+      <path d="M622,200 L668,173" fill="none" style="${wireStyle("s2","#B9C9D2")}" stroke-linecap="round"/>
+      <path d="M622,280 L668,323" fill="none" style="${wireStyle("s2","#B9C9D2")}" stroke-linecap="round"/>
+      <path d="M200,404 L420,404 L560,404 L560,312" fill="none" style="${wireStyle("s5","#E5484D")}" stroke-linecap="round"/>
+      <path d="M340,324 L340,440 L200,440 M340,440 L560,440 L560,312" fill="none" style="${wireStyle("s6","#8A99A5")}" stroke-linecap="round"/>
+    </svg>`
+    }
+  },
+  {
+    id:"l8", kind:"circuit",
+    concept:"ระบบย่อยของหุ่นยนต์ · วงจรตรวจจับความร้อนและระบบพ่นน้ำดับไฟ",
+    title:"ภาระงานที่ 8 — ต่อวงจรระบบตรวจจับความร้อนและพ่นน้ำดับไฟ",
+    text:"บริเวณที่เกิดเพลิงไหม้ RESCUE-BOT ต้องวัดอุณหภูมิเพื่อหาจุดเผาไหม้ เมื่อพบความร้อนสูง บอร์ดจะประมวลผลแล้วสั่งงาน 2 ทาง คือ สั่งปั๊มน้ำให้ทำงานผ่านโมดูลรีเลย์ และสั่งเซอร์โวให้หมุนหัวฉีดกวาดพ่นสเปรย์น้ำเพื่อลดอุณหภูมิและดับไฟ ให้ลากอุปกรณ์และสายเชื่อมต่อไปวางบนผังวงจรให้ครบทุกตำแหน่ง",
+    slots:[
+      {id:"f1", label:"อุปกรณ์ตรวจวัดอุณหภูมิจากการเผาไหม้", correct:"j_temp"},
+      {id:"f2", label:"วงจรที่รับคำสั่งจากบอร์ดไปตัด-ต่อไฟให้ปั๊มน้ำ", correct:"j_relay"},
+      {id:"f3", label:"ขาที่ Arduino ใช้อ่านค่าอุณหภูมิเข้ามา", correct:"j_d2"},
+      {id:"f4", label:"ขาที่ Arduino ใช้ส่งสัญญาณ PWM ควบคุมมุมหัวฉีดของเซอร์โว", correct:"j_d6"},
+      {id:"f5", label:"แหล่งจ่ายไฟสำหรับปั๊มน้ำ (กินกระแสสูง ต้องแยกจากไฟบอร์ด)", correct:"j_pow12"},
+      {id:"f6", label:"สายที่ต้องต่อร่วมกันทุกอุปกรณ์ เพื่อให้ใช้ระดับแรงดันอ้างอิงเดียวกัน", correct:"j_gnd"}
+    ],
+    items:[
+      {id:"j_temp", label:"เซนเซอร์วัดอุณหภูมิ DS18B20"},
+      {id:"j_relay", label:"โมดูลรีเลย์ 1 ช่อง"},
+      {id:"j_d2", label:"ขาดิจิทัล D2 (INPUT)"},
+      {id:"j_d6", label:"ขาดิจิทัล D6 (PWM OUTPUT)"},
+      {id:"j_pow12", label:"แหล่งจ่ายไฟ 12V สำหรับปั๊มน้ำ"},
+      {id:"j_gnd", label:"สาย GND ร่วม (common ground)"},
+      {id:"j_hcsr04", label:"เซนเซอร์อัลตราโซนิก HC-SR04"},
+      {id:"j_a3", label:"ขาอนาล็อก A3 (อ่านค่าแสง)"},
+      {id:"j_dcmotor", label:"มอเตอร์ DC ขับเคลื่อนล้อ"}
+    ],
+    board:{
+      title:"RESCUE-BOT · Fire Suppression Workbench",
+      okMessage:"เซนเซอร์อ่านอุณหภูมิส่งเข้าบอร์ดได้ บอร์ดสั่งรีเลย์เปิดปั๊มน้ำ และส่งสัญญาณ PWM ให้เซอร์โวกวาดหัวฉีด — ระบบตรวจจับความร้อนและพ่นน้ำดับไฟพร้อมใช้งาน",
+      caption:"สายไฟจะเปลี่ยนจากเส้นประเป็นเส้นทึบเมื่อวางชิ้นส่วนลงในช่องแล้ว (ยังไม่ได้บอกว่าถูกหรือผิด จนกว่าจะกดทดสอบระบบ) · สีแดงส้ม = สัญญาณอุณหภูมิ · สีฟ้า = สัญญาณ PWM ไปเซอร์โว · สีม่วง = สัญญาณควบคุมรีเลย์ · สีแดง = ไฟเลี้ยงปั๊มน้ำ · สีเทา = กราวด์ร่วม",
+      slots:[
+        {id:"f1", left:24, top:13, w:"152px", h:"58px", ph:"ช่องวางเซนเซอร์วัดอุณหภูมิ"},
+        {id:"f2", left:70, top:47, w:"150px", h:"60px", ph:"ช่องวางวงจรขับปั๊มน้ำ"},
+        {id:"f5", left:15.5, top:81, w:"146px", h:"50px", ph:"ช่องวางแหล่งจ่ายไฟปั๊มน้ำ"},
+        {id:"f3", left:11, top:40, w:"142px", h:"44px", ph:"🟥 สายสัญญาณอุณหภูมิ"},
+        {id:"f4", left:11, top:55, w:"142px", h:"44px", ph:"🟦 สายสัญญาณ PWM เซอร์โว"},
+        {id:"f6", left:40, top:93, w:"150px", h:"40px", ph:"สายกราวด์ร่วม"}
+      ],
+      pins:[{label:"D2", left:43.5, top:33.5},{label:"D6", left:48.5, top:33.5},{label:"5V / GND", left:45.5, top:66.5}],
+      svg:(wireStyle)=>`
+    <svg viewBox="0 0 800 500" preserveAspectRatio="xMidYMid meet" xmlns="http://www.w3.org/2000/svg">
+      <rect x="310" y="185" width="190" height="130" rx="8" fill="#1B6F63" stroke="#0B1017" stroke-width="3"/>
+      <rect x="322" y="197" width="166" height="26" rx="3" fill="#0F4A42"/>
+      <text x="405" y="215" text-anchor="middle" fill="#C9F2EA" font-size="15" font-family="monospace">ARDUINO UNO</text>
+      <rect x="370" y="245" width="70" height="26" rx="3" fill="#12181F" stroke="#0B1017" stroke-width="2"/>
+      <circle cx="380" cy="258" r="3" fill="#3A4D5C"/>
+      <rect x="322" y="176" width="166" height="12" rx="2" fill="#12181F" stroke="#0B1017" stroke-width="1.5"/>
+      <rect x="322" y="312" width="120" height="12" rx="2" fill="#12181F" stroke="#0B1017" stroke-width="1.5"/>
+      <rect x="296" y="200" width="22" height="30" rx="3" fill="#8A99A5" stroke="#0B1017" stroke-width="2"/>
+
+      <!-- water pump -->
+      <rect x="664" y="292" width="94" height="52" rx="8" fill="#2A3742" stroke="#0B1017" stroke-width="3"/>
+      <circle cx="688" cy="318" r="13" fill="#12181F" stroke="#0B1017" stroke-width="2.5"/>
+      <circle cx="688" cy="318" r="4" fill="#4FA3E3"/>
+      <text x="726" y="323" text-anchor="middle" fill="#B9C9D2" font-size="12" font-family="monospace">PUMP</text>
+
+      <!-- servo + nozzle -->
+      <rect x="676" y="140" width="66" height="46" rx="5" fill="#2A3742" stroke="#0B1017" stroke-width="3"/>
+      <text x="709" y="168" text-anchor="middle" fill="#B9C9D2" font-size="12" font-family="monospace">SERVO</text>
+      <circle cx="709" cy="132" r="9" fill="#12181F" stroke="#0B1017" stroke-width="2.5"/>
+      <path d="M709,132 L742,106" stroke="#8A99A5" stroke-width="6" stroke-linecap="round"/>
+      <path d="M744,104 q16,-8 26,-2 M744,112 q18,-2 28,6 M740,98 q10,-16 24,-16" stroke="#4FA3E3" stroke-width="3" fill="none" stroke-linecap="round" opacity="0.85"/>
+
+      <!-- flames (จุดเผาไหม้ที่หัวฉีดเล็งไปหา) -->
+      <g transform="translate(566,-12)">
+        <path d="M96,470 c-14,-18 -10,-38 4,-52 c-4,14 6,16 8,6 c10,12 14,28 4,42 c10,-6 16,-18 14,-30 c10,14 12,32 -2,42 c-14,8 -36,6 -28,-8 Z"
+          fill="#FF6A39" stroke="#0B1017" stroke-width="2.5" stroke-linejoin="round"/>
+        <path d="M102,468 c-7,-12 -4,-24 4,-32 c-2,8 4,10 6,4 c6,8 8,18 0,26 c-6,4 -14,8 -10,2 Z" fill="#F2A93B"/>
+      </g>
+
+      <path d="M352,176 L352,116 L188,116 L188,96" fill="none" style="${wireStyle("f3","#E5484D")}" stroke-linecap="round"/>
+      <path d="M392,176 L392,140 L248,140 L248,96" fill="none" style="${wireStyle("f4","#4FA3E3")}" stroke-linecap="round"/>
+      <path d="M392,140 L392,120 L640,120 L640,140" fill="none" style="${wireStyle("f4","#4FA3E3")}" stroke-linecap="round"/>
+      <path d="M460,176 L460,128 L560,128 L560,166" fill="none" style="${wireStyle("f2","#C77DFF")}" stroke-linecap="round"/>
+      <path d="M622,272 L664,304" fill="none" style="${wireStyle("f2","#B9C9D2")}" stroke-linecap="round"/>
+      <path d="M200,404 L420,404 L560,404 L560,310" fill="none" style="${wireStyle("f5","#E5484D")}" stroke-linecap="round"/>
+      <path d="M340,324 L340,440 L200,440 M340,440 L560,440 L560,310" fill="none" style="${wireStyle("f6","#8A99A5")}" stroke-linecap="round"/>
+    </svg>`
+    }
+  },
+  {
+    id:"l9", kind:"blocks",
+    concept:"การเขียนโปรแกรมบล็อก · if–then–else ควบคุมการเดินอัตโนมัติ",
+    title:"ภาระงานที่ 9 — เขียนโปรแกรมบล็อกให้หุ่นยนต์ไปปิดวาล์วแก๊ส",
+    text:"มีแก๊สรั่วในอาคารที่พังถล่ม RESCUE-BOT ต้องเดินบนตารางไปให้ถึงวาล์วแก๊สและปิดวาล์วให้สำเร็จ โดยหลบสิ่งกีดขวางเองแบบอัตโนมัติ ให้ลากบล็อกคำสั่งด้านล่างไปวางในช่องว่างของโปรแกรม ให้หุ่นยนต์ทำงานได้ถูกต้อง (บล็อกบางชิ้นเป็นตัวลวง ไม่ต้องใช้ทุกชิ้น)",
+    slots:[
+      {id:"b1", label:"เงื่อนไขหยุดการวนซ้ำ", correct:"k_atvalve"},
+      {id:"b2", label:"เงื่อนไขที่ต้องตรวจสอบก่อนเคลื่อนที่", correct:"k_obstacle"},
+      {id:"b3", label:"คำสั่งเมื่อเงื่อนไขเป็นจริง", correct:"k_turnright"},
+      {id:"b4", label:"คำสั่งเมื่อเงื่อนไขเป็นเท็จ", correct:"k_forward"},
+      {id:"b5", label:"คำสั่งหลังออกจากลูป", correct:"k_closevalve"}
+    ],
+    items:[
+      {id:"k_atvalve", label:"ถึงตำแหน่งวาล์วแก๊ส", type:"cond"},
+      {id:"k_obstacle", label:"ตรวจพบสิ่งกีดขวางข้างหน้า", type:"cond"},
+      {id:"k_turnright", label:"เลี้ยวขวา 90°", type:"act"},
+      {id:"k_forward", label:"เดินหน้า 1 ช่อง", type:"act"},
+      {id:"k_closevalve", label:"ปิดวาล์วแก๊ส", type:"act"},
+      {id:"k_battzero", label:"พลังงานแบตเตอรี่ = 0", type:"cond"},
+      {id:"k_stop", label:"หยุดการทำงานถาวร", type:"act"},
+      {id:"k_beep", label:"ส่งเสียงเตือน", type:"act"}
+    ]
+  },
+  {
+    id:"l10", kind:"fireblocks",
+    concept:"การเขียนโปรแกรมบล็อก · วงจรควบคุมป้อนกลับของระบบดับเพลิง",
+    title:"ภาระงานที่ 10 — เขียนโปรแกรมบล็อกควบคุมระบบพ่นน้ำดับไฟ",
+    text:"นำวงจรจากภาระงานที่ 8 มาเขียนโปรแกรมควบคุม: RESCUE-BOT ต้องอ่านอุณหภูมิจากเซนเซอร์ซ้ำ ๆ ถ้าพบความร้อนจากการเผาไหม้ต้องสั่งปั๊มน้ำแรงดันสูงพร้อมกวาดเซอร์โวหัวฉีดให้ครอบคลุม ถ้ายังไม่ร้อนจัดให้ฉีดแรงดันต่ำประหยัดน้ำต่อไป จนกว่าไฟจะดับแล้วจึงรายงานศูนย์ควบคุม ให้ลากบล็อกไปวางให้ครบแล้วกดทดสอบ (มีบล็อกลวง ไม่ต้องใช้ทุกชิ้น · น้ำมีจำกัด 100%)",
+    slots:[
+      {id:"c1", label:"เงื่อนไขหยุดการวนซ้ำ (ไฟดับแล้ว)", correct:"k_cool"},
+      {id:"c2", label:"เงื่อนไขที่บอกว่าพบการเผาไหม้รุนแรง", correct:"k_hot"},
+      {id:"c3", label:"คำสั่งที่ 1 เมื่อร้อนจัด", correct:"k_pumphigh"},
+      {id:"c4", label:"คำสั่งที่ 2 เมื่อร้อนจัด", correct:"k_servosweep"},
+      {id:"c5", label:"คำสั่งเมื่อยังไม่ร้อนจัด", correct:"k_pumplow"},
+      {id:"c6", label:"คำสั่งหลังออกจากลูป", correct:"k_report"}
+    ],
+    items:[
+      {id:"k_cool", label:"อุณหภูมิต่ำกว่า 45°C", type:"cond"},
+      {id:"k_hot", label:"อุณหภูมิ ≥ 60°C", type:"cond"},
+      {id:"k_pumphigh", label:"เปิดปั๊มน้ำแรงดันสูง", type:"act"},
+      {id:"k_servosweep", label:"กวาดเซอร์โวหัวฉีด 30°–150°", type:"act"},
+      {id:"k_pumplow", label:"ฉีดน้ำแรงดันต่ำต่อเนื่อง", type:"act"},
+      {id:"k_report", label:"ปิดปั๊มและรายงานศูนย์ควบคุม", type:"act"},
+      {id:"k_warm", label:"อุณหภูมิ ≥ 20°C", type:"cond"},
+      {id:"k_halt", label:"หยุดระบบถาวร", type:"act"},
+      {id:"k_led", label:"เปิดไฟสัญญาณเตือนอย่างเดียว", type:"act"}
+    ]
+  }
+];
+
+/* =========================================================
+   DATA — APPLY (5 กิจกรรม ปรับพารามิเตอร์แบบ real-time)
+   ========================================================= */
+const APPLY_ACTIVITIES = [
+  {
+    id:"a1", kind:"weight3",
+    title:"กิจกรรมที่ 1 — ปรับน้ำหนัก 5 ปัจจัยความเสี่ยงภารกิจ",
+    intro:"ปรับน้ำหนักความสำคัญของ 5 ปัจจัย ให้คะแนนความเสี่ยงรวมของทั้ง 8 ภารกิจตรงกับระดับความเสี่ยงจริงมากที่สุด (เกณฑ์ตัดระดับคงที่ที่ 35 / 65 คะแนน)",
+    factors:[
+      {key:"energy", label:"พลังงานที่ต้องใช้"},
+      {key:"hazard", label:"ความถี่จุดเสี่ยง"},
+      {key:"fire", label:"ตำแหน่ง/ความเร็วไฟ"},
+      {key:"structure", label:"ความไม่มั่นคงโครงสร้าง"},
+      {key:"deviation", label:"ความเบี่ยงเบนเส้นทาง"}
+    ],
+    defaultWeights:[20,20,20,20,20],
+    thresholds:{lo:35, hi:65},
+    missions:[
+      {name:"M1", f:[20,15,95,90,10], trueLabel:"High"},
+      {name:"M2", f:[80,70,15,10,20], trueLabel:"Low"},
+      {name:"M3", f:[10,10,10,10,15], trueLabel:"Low"},
+      {name:"M4", f:[85,80,35,30,35], trueLabel:"Medium"},
+      {name:"M5", f:[30,25,88,85,20], trueLabel:"High"},
+      {name:"M6", f:[45,40,45,40,40], trueLabel:"Medium"},
+      {name:"M7", f:[15,20,80,92,25], trueLabel:"High"},
+      {name:"M8", f:[35,30,20,15,88], trueLabel:"Low"}
+    ]
+  },
+  {
+    id:"a2", kind:"threshold3",
+    title:"กิจกรรมที่ 2 — ปรับเส้นเกณฑ์ตัดระดับความเสี่ยง",
+    intro:"คราวนี้น้ำหนักทั้ง 5 ปัจจัยถูกกำหนดให้เท่ากันคงที่ (สร้างเป็นคะแนนรวมแล้ว) หน้าที่ของคุณคือปรับเส้นเกณฑ์ 2 เส้น (ต่ำ/ปานกลาง และ ปานกลาง/สูง) ให้การจัดระดับของทั้ง 10 ภารกิจตรงกับความเป็นจริงมากที่สุด",
+    defaultThresholds:{lo:25, hi:55},
+    missions:[
+      {name:"M1", score:15, trueLabel:"Low"},
+      {name:"M2", score:22, trueLabel:"Low"},
+      {name:"M3", score:30, trueLabel:"Low"},
+      {name:"M4", score:38, trueLabel:"Medium"},
+      {name:"M5", score:45, trueLabel:"Medium"},
+      {name:"M6", score:52, trueLabel:"Medium"},
+      {name:"M7", score:58, trueLabel:"Medium"},
+      {name:"M8", score:66, trueLabel:"High"},
+      {name:"M9", score:73, trueLabel:"High"},
+      {name:"M10", score:88, trueLabel:"High"}
+    ]
+  },
+  {
+    id:"a3", kind:"weight3",
+    title:"กิจกรรมที่ 3 — ปรับน้ำหนักความเป็นไปได้ของเส้นทาง (Loop/พลังงาน)",
+    intro:"เส้นทางแต่ละสายต้องใช้ทั้งจำนวนรอบ loop มากน้อยต่างกัน ผ่านจุดเสี่ยงถี่ต่างกัน และอยู่ในอาคารที่มีความเสี่ยงโครงสร้างต่างกัน ปรับน้ำหนัก 3 ปัจจัยให้ผลการจัดระดับ 'ความเป็นไปได้ในการเดินเส้นทาง' ตรงกับความจริงมากที่สุด (เกณฑ์คงที่ 35 / 65)",
+    factors:[
+      {key:"steps", label:"จำนวนรอบ loop ที่ต้องใช้"},
+      {key:"hazardExposure", label:"ความถี่จุดเสี่ยงตลอดเส้นทาง"},
+      {key:"structRisk", label:"ความเสี่ยงโครงสร้างตลอดเส้นทาง"}
+    ],
+    defaultWeights:[34,33,33],
+    thresholds:{lo:35, hi:65},
+    missions:[
+      {name:"เส้นทาง 1", f:[20,15,10], trueLabel:"Low"},
+      {name:"เส้นทาง 2", f:[85,20,15], trueLabel:"Low"},
+      {name:"เส้นทาง 3", f:[30,85,80], trueLabel:"High"},
+      {name:"เส้นทาง 4", f:[70,70,65], trueLabel:"High"},
+      {name:"เส้นทาง 5", f:[40,35,30], trueLabel:"Low"},
+      {name:"เส้นทาง 6", f:[15,90,20], trueLabel:"Medium"},
+      {name:"เส้นทาง 7", f:[60,25,20], trueLabel:"Low"},
+      {name:"เส้นทาง 8", f:[25,55,60], trueLabel:"Medium"}
+    ]
+  },
+  {
+    id:"a4", kind:"threshold2",
+    title:"กิจกรรมที่ 4 — ปรับเกณฑ์ตัดสินใจ 'ไป/รอ' เมื่อเจอไฟ",
+    intro:"แต่ละสถานการณ์มี 'ดัชนีอันตราย' (Danger Index) ที่คำนวณจากระยะไฟและความเร็วลามไว้แล้ว ปรับเส้นเกณฑ์การตัดสินใจเพียงเส้นเดียว: หากดัชนีต่ำกว่าเกณฑ์ → ไปต่อได้ (GO) หากสูงกว่าหรือเท่ากับเกณฑ์ → ต้องรอ (WAIT) ให้ตรงกับการตัดสินใจของผู้เชี่ยวชาญมากที่สุด",
+    defaultThreshold:45,
+    scenarios:[
+      {name:"S1", danger:18, trueDecision:"GO"},
+      {name:"S2", danger:32, trueDecision:"GO"},
+      {name:"S3", danger:41, trueDecision:"GO"},
+      {name:"S4", danger:47, trueDecision:"GO"},
+      {name:"S5", danger:53, trueDecision:"GO"},
+      {name:"S6", danger:61, trueDecision:"WAIT"},
+      {name:"S7", danger:68, trueDecision:"WAIT"},
+      {name:"S8", danger:74, trueDecision:"WAIT"},
+      {name:"S9", danger:85, trueDecision:"WAIT"},
+      {name:"S10", danger:92, trueDecision:"WAIT"}
+    ]
+  },
+  {
+    id:"a5", kind:"weight3",
+    title:"กิจกรรมที่ 5 — ปรับน้ำหนักการจัดลำดับความสำคัญช่วยเหลือ (Triage)",
+    intro:"เมื่อพบผู้ประสบภัยหลายคนพร้อมกัน หุ่นยนต์ต้องจัดลำดับว่าจะช่วยใครก่อน ปรับน้ำหนัก 3 ปัจจัยให้ผลการจัดระดับความสำคัญของผู้ประสบภัยทั้ง 8 คน ตรงกับการประเมินของทีมแพทย์ภาคสนามมากที่สุด (เกณฑ์คงที่ 35 / 65)",
+    factors:[
+      {key:"urgency", label:"ความเร่งด่วนของอาการ"},
+      {key:"access", label:"ความยากในการเข้าถึงจุดที่อยู่"},
+      {key:"structRisk", label:"ความเสี่ยงโครงสร้าง ณ จุดนั้น"}
+    ],
+    defaultWeights:[34,33,33],
+    thresholds:{lo:35, hi:65},
+    missions:[
+      {name:"ผู้ประสบภัย 1", f:[0,70,80], trueLabel:"Low"},
+      {name:"ผู้ประสบภัย 2", f:[10,50,60], trueLabel:"Low"},
+      {name:"ผู้ประสบภัย 3", f:[80,0,90], trueLabel:"High"},
+      {name:"ผู้ประสบภัย 4", f:[60,0,90], trueLabel:"Medium"},
+      {name:"ผู้ประสบภัย 5", f:[30,10,0], trueLabel:"Low"},
+      {name:"ผู้ประสบภัย 6", f:[60,50,90], trueLabel:"Medium"},
+      {name:"ผู้ประสบภัย 7", f:[90,60,90], trueLabel:"High"},
+      {name:"ผู้ประสบภัย 8", f:[50,50,40], trueLabel:"Medium"}
+    ]
+  }
+];
+
+/* =========================================================
+   DATA — REFLECT
+   ========================================================= */
+const REFLECT_LIKERT = [
+  "ฉันสามารถอธิบายได้ว่า sequence, loop และ conditional แตกต่างกันอย่างไร",
+  "ฉันเข้าใจว่าทำไมการใช้คะแนนความเสี่ยงรวมจากหลายปัจจัยดีกว่าการดูปัจจัยเดียว",
+  "ฉันสามารถปรับน้ำหนักหรือเกณฑ์ตัดสินใจเพื่อให้ผลลัพธ์แม่นยำขึ้นได้ด้วยตนเอง",
+  "ฉันรู้สึกมั่นใจที่จะนำแนวคิดการเขียนโปรแกรมสั่งงานตัวแทน (agent) ไปประยุกต์ใช้กับสถานการณ์อื่น"
+];
+const REFLECT_OPEN = [
+  {
+    id:"r_o1",
+    text:"หาก RESCUE-BOT ตั้งเกณฑ์ 'อันตรายเกินไป' ไว้ต่ำเกินไป (ระมัดระวังมากเกินไป) อาจทำให้พลาดโอกาสช่วยผู้ประสบภัยบางคนที่จริง ๆ แล้วปลอดภัยพอจะเข้าถึงได้ทัน (False Negative ในแง่โอกาสช่วยเหลือ) ในทางกลับกัน หากตั้งเกณฑ์ต่ำเกินไปในทางกล้าเสี่ยง อาจทำให้หุ่นยนต์เข้าไปในจุดอันตรายจริง คุณคิดว่าควรสร้างสมดุลระหว่างสองความเสี่ยงนี้อย่างไร"
+  },
+  {
+    id:"r_o2",
+    text:"จากกิจกรรมทั้งหมด คุณคิดว่าขั้นตอนใดยากที่สุดสำหรับคุณ (SHOW / LEARN / APPLY) และเพราะเหตุใด พร้อมยกตัวอย่างประกอบ"
+  }
+];
+
+/* =========================================================
+   STATE
+   ========================================================= */
+const state = {
+  screen:"intro",
+  name:"", grade:"",
+  showIdx:0, showAnswers:{},
+  learnIdx:0, learnAnswers:{},
+  dragAnswers:{}, selectedChip:null, testRuns:{}, testResult:{}, anim:null,
+  applyIdx:0, applyResults:{}, // per activity: {weights/thresholds, accuracy}
+  reflectLikert:{}, reflectOpen:{},
+  startTime:null, timedOut:false, submitted:false,
+};
+let chartInstances = {};
+let countdownIntervalId = null;
+
+function formatCountdown(totalSeconds){
+  const s = Math.max(0, Math.round(totalSeconds));
+  const m = Math.floor(s/60);
+  const ss = s%60;
+  return m + ":" + String(ss).padStart(2,"0");
+}
+function startCountdown(){
+  if(countdownIntervalId) clearInterval(countdownIntervalId);
+  countdownIntervalId = setInterval(updateTimerDisplay, 1000);
+  updateTimerDisplay();
+}
+function updateTimerDisplay(){
+  const timerEl = document.getElementById("timerDisplay");
+  if(!timerEl || !state.startTime){ return; }
+  const elapsed = (Date.now() - state.startTime) / 1000;
+  const remaining = CONFIG.totalMinutes*60 - elapsed;
+  timerEl.textContent = "เหลือเวลา " + formatCountdown(remaining);
+  timerEl.classList.toggle("low-time", remaining <= 60);
+  if(remaining <= 0){
+    state.timedOut = true;
+    if(countdownIntervalId){ clearInterval(countdownIntervalId); countdownIntervalId = null; }
+  }
+}
+
+/* =========================================================
+   HELPERS
+   ========================================================= */
+function scoreOf(f,w){ const s=w.reduce((a,b)=>a+b,0)||1; return f.reduce((acc,v,i)=>acc+v*w[i],0)/s; }
+function label3(s,lo,hi){ return s<lo?"Low":(s<hi?"Medium":"High"); }
+function labelThai(l){ return l==="Low"?"ต่ำ":l==="Medium"?"ปานกลาง":l==="High"?"สูง":l; }
+function pct(n){ return Math.round(n*10)/10; }
+function el(tag, attrs={}, ...children){
+  const e = document.createElement(tag);
+  for(const k in attrs){
+    if(k==="class") e.className=attrs[k];
+    else if(k==="html") e.innerHTML=attrs[k];
+    else if(k.startsWith("on")) e.addEventListener(k.slice(2), attrs[k]);
+    else if(k==="disabled" || k==="checked"){
+      if(attrs[k]) e.setAttribute(k, "");
+      else e.removeAttribute(k);
+    }
+    else if(attrs[k]===false || attrs[k]==null) { /* skip falsy boolean-ish attrs */ }
+    else e.setAttribute(k, attrs[k]);
+  }
+  children.flat().forEach(c=>{
+    if(c==null) return;
+    if(typeof c==="string" || typeof c==="number") e.appendChild(document.createTextNode(String(c)));
+    else e.appendChild(c);
+  });
+  return e;
+}
+function destroyCharts(){ Object.values(chartInstances).forEach(c=>c && c.destroy()); chartInstances={}; }
+
+/* =========================================================
+   RENDER: ROOT
+   ========================================================= */
+function render(){
+  const app = document.getElementById("app");
+  app.innerHTML = "";
+  destroyCharts();
+  if(state.screen!=="intro" && state.screen!=="report"){
+    app.appendChild(renderStatusBar());
+  }
+  if(state.screen==="intro") app.appendChild(renderIntro());
+  else if(state.screen==="show") app.appendChild(renderShow());
+  else if(state.screen==="learn") app.appendChild(renderLearn());
+  else if(state.screen==="apply") app.appendChild(renderApply());
+  else if(state.screen==="reflect") app.appendChild(renderReflect());
+  else if(state.screen==="report") app.appendChild(renderReport());
+  window.scrollTo({top:0, behavior:"instant"});
+}
+
+/* ---------- Status bar ---------- */
+const PHASE_LABELS = {show:"SHOW", learn:"LEARN", apply:"APPLY", reflect:"REFLECT"};
+function renderStatusBar(){
+  const phases = ["show","learn","apply","reflect"];
+  const track = el("div",{class:"phase-track"},
+    phases.map(p=>{
+      const state_ = p===state.screen ? "active" : (phases.indexOf(p)<phases.indexOf(state.screen) ? "done" : "");
+      return el("div",{class:("phase-item "+state_).trim()},
+        el("div",{class:"phase-label"}, PHASE_LABELS[p]),
+        el("div",{class:("phase-dot "+state_).trim()})
+      );
+    })
+  );
+  const bar = el("div",{class:"statusbar"},
+    el("div",{class:"who"}, el("b",{},state.name||"ผู้เข้าสอบ"), " · ระดับชั้น ", state.grade||"-"),
+    track,
+    el("div",{class:"timer mono", id:"timerDisplay"}, "เหลือเวลา " + formatCountdown(CONFIG.totalMinutes*60))
+  );
+  return bar;
+}
+
+/* =========================================================
+   RENDER: INTRO
+   ========================================================= */
+function renderIntro(){
+  const wrap = el("div",{class:"hero"});
+  wrap.appendChild(el("div",{html:`
+    <svg viewBox="0 0 640 380" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <radialGradient id="glow" cx="72%" cy="42%" r="55%">
+          <stop offset="0%" stop-color="#3FCFB4" stop-opacity="0.24"/>
+          <stop offset="100%" stop-color="#3FCFB4" stop-opacity="0"/>
+        </radialGradient>
+        <linearGradient id="skyFade" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stop-color="#182430"/>
+          <stop offset="100%" stop-color="#0F1720"/>
+        </linearGradient>
+        <linearGradient id="botBody" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stop-color="#FF8A5E"/>
+          <stop offset="100%" stop-color="#FF6A39"/>
+        </linearGradient>
+      </defs>
+
+      <rect x="0" y="0" width="640" height="380" fill="url(#skyFade)"/>
+      <circle cx="470" cy="140" r="160" fill="url(#glow)"/>
+
+      <path d="M0,235
+        C 40,215 70,170 105,175
+        C 140,180 150,215 190,205
+        C 230,195 245,150 285,155
+        C 325,160 335,205 380,200
+        C 425,195 440,160 485,168
+        C 530,176 540,210 580,205
+        C 610,201 625,215 640,210
+        L640,380 L0,380 Z"
+        fill="#1B2733" stroke="#0B1017" stroke-width="3" stroke-linejoin="round"/>
+      <path d="M105,175 C112,186 118,196 122,203 M285,155 C292,167 298,178 302,186 M485,168 C492,179 498,190 502,197"
+        stroke="#0B1017" stroke-width="2.5" stroke-linecap="round" fill="none" opacity="0.55"/>
+
+      <path d="M0,268
+        C 50,250 90,225 130,232
+        C 170,239 175,262 215,258
+        C 255,254 270,224 315,230
+        C 360,236 365,262 410,258
+        C 455,254 470,226 515,233
+        C 555,239 565,262 605,258
+        C 620,256 630,262 640,260
+        L640,380 L0,380 Z"
+        fill="#22303C" stroke="#0B1017" stroke-width="3" stroke-linejoin="round"/>
+
+      <g transform="translate(300,150)">
+        <path d="M0,26 C-7,15 -5,4 1,-4 C-1,4 4,6 6,1 C11,8 13,17 7,25 C10,22 12,17 11,12 C16,19 17,27 10,32 C3,36 -5,34 0,26 Z"
+          fill="#FF6A39" stroke="#0B1017" stroke-width="2" stroke-linejoin="round" transform="scale(0.85)"/>
+      </g>
+
+      <path d="M0,300 L40,290 L90,302 L140,286 L200,300 L260,288 L320,304 L380,290 L440,302 L500,288 L560,300 L640,292 L640,380 L0,380 Z"
+        fill="#263644" stroke="#0B1017" stroke-width="3" stroke-linejoin="round"/>
+      <path d="M28,299 L68,294 M108,303 L152,297 M188,299 L232,295 M268,306 L312,300 M348,297 L392,293 M428,304 L472,298 M508,295 L552,291"
+        stroke="#3A4D5C" stroke-width="4" stroke-linecap="round" fill="none"/>
+
+      <path d="M120,320 C140,309 178,309 198,317 C218,325 207,333 180,333 C154,333 98,330 120,320 Z"
+        fill="#3FCFB4" fill-opacity="0.88" stroke="#0B1017" stroke-width="2.5"/>
+      <path d="M138,316 C152,312 168,312 180,316" stroke="#EAF2F1" stroke-opacity="0.35" stroke-width="2.5" fill="none" stroke-linecap="round"/>
+
+      <g transform="translate(20,232)">
+        <path d="M44,68 C30,50 34,30 48,16 C44,30 54,32 56,22 C66,34 70,50 60,64 C70,58 76,46 74,34 C84,48 86,66 72,76 C58,84 36,82 44,68 Z"
+          fill="#FF6A39" stroke="#0B1017" stroke-width="2.5" stroke-linejoin="round"/>
+        <path d="M50,66 C43,54 46,42 54,34 C52,42 58,44 60,38 C66,46 68,56 60,64 C54,68 46,72 50,66 Z"
+          fill="#F2A93B"/>
+      </g>
+
+      <path d="M468,258 C418,272 338,286 280,300" stroke="#6FCF97" stroke-width="2.5" stroke-dasharray="6 6" fill="none" stroke-linecap="round"/>
+      <circle cx="278" cy="302" r="6" fill="#6FCF97"/>
+      <circle cx="278" cy="302" r="13" fill="none" stroke="#6FCF97" stroke-width="2" opacity="0.55"/>
+      <circle cx="278" cy="302" r="20" fill="none" stroke="#6FCF97" stroke-width="1.5" opacity="0.3"/>
+
+      <g>
+        <circle cx="560" cy="290" r="19" fill="#1C2430" stroke="#0B1017" stroke-width="3"/>
+        <circle cx="560" cy="290" r="6.5" fill="#85A0AA"/>
+
+        <circle cx="486" cy="288" r="34" fill="#12181F" stroke="#0B1017" stroke-width="4"/>
+        <circle cx="486" cy="288" r="12" fill="#FF6A39"/>
+        <path d="M486,262 L486,314 M460,288 L512,288 M468,270 L504,306 M468,306 L504,270"
+          stroke="#0B1017" stroke-width="3" stroke-linecap="round"/>
+        <circle cx="486" cy="288" r="34" fill="none" stroke="#0B1017" stroke-width="4"/>
+
+        <rect x="450" y="218" width="100" height="54" rx="17" fill="url(#botBody)" stroke="#0B1017" stroke-width="4"/>
+        <rect x="460" y="229" width="36" height="15" rx="7.5" fill="#12181F"/>
+        <circle cx="471" cy="236.5" r="4.5" fill="#3FCFB4"/>
+        <rect x="458" y="252" width="80" height="6" rx="3" fill="#0B1017" opacity="0.25"/>
+
+        <path d="M468,218 L463,199" stroke="#0B1017" stroke-width="4" stroke-linecap="round"/>
+        <circle cx="462" cy="195" r="6.5" fill="#3FCFB4" stroke="#0B1017" stroke-width="2.5"/>
+
+        <path d="M538,230 L576,194" stroke="#0B1017" stroke-width="14" stroke-linecap="round"/>
+        <path d="M538,230 L576,194" stroke="#FF6A39" stroke-width="9" stroke-linecap="round"/>
+        <circle cx="538" cy="230" r="9" fill="#85A0AA" stroke="#0B1017" stroke-width="3"/>
+
+        <path d="M576,194 L558,150" stroke="#0B1017" stroke-width="13" stroke-linecap="round"/>
+        <path d="M576,194 L558,150" stroke="#FF8A5E" stroke-width="8" stroke-linecap="round"/>
+        <circle cx="576" cy="194" r="8" fill="#85A0AA" stroke="#0B1017" stroke-width="3"/>
+
+        <path d="M558,150 L544,130 M558,150 L546,144 M558,150 L574,128 M558,150 L576,142"
+          stroke="#0B1017" stroke-width="7" stroke-linecap="round" fill="none"/>
+        <path d="M558,150 L544,130 M558,150 L574,128"
+          stroke="#EAF2F1" stroke-width="4" stroke-linecap="round" fill="none"/>
+      </g>
+    </svg>
+  `}));
+  wrap.appendChild(el("h1",{},"RESCUE-BOT: ภารกิจหุ่นยนต์กู้ภัยในเขตภัยพิบัติ"));
+  wrap.appendChild(el("p",{class:"tag"},
+    "แบบฝึกฝนเทียบเคียง PISA 2025 Learning-Domain Workflow (LDW) — สั่งงานตัวแทนดิจิทัล วิเคราะห์ข้อมูลจำลอง และปรับพารามิเตอร์เพื่อประเมินความเสี่ยงภารกิจกู้ภัย ใช้เวลาประมาณ 30 นาที"
+  ));
+
+  const form = el("div",{class:"form-card"});
+  const nameInput = el("input",{type:"text", placeholder:"เช่น ด.ช. สมชาย ใจกล้า", id:"nameInput"});
+  const gradeSelect = el("select",{id:"gradeSelect"},
+    el("option",{value:""},"— เลือกระดับชั้น —"),
+    el("option",{value:"ม.2"},"มัธยมศึกษาปีที่ 2"),
+    el("option",{value:"ม.3"},"มัธยมศึกษาปีที่ 3"),
+    el("option",{value:"ม.4"},"มัธยมศึกษาปีที่ 4"),
+    el("option",{value:"ปวช."},"ปวช.")
+  );
+  form.appendChild(el("div",{class:"field-row"}, el("label",{},"ชื่อผู้เข้าสอบ"), nameInput));
+  form.appendChild(el("div",{class:"field-row"}, el("label",{},"ระดับชั้น"), gradeSelect));
+  const startBtn = el("button",{class:"btn btn-primary", style:"width:100%;margin-top:6px;", onclick:()=>{
+    const n = nameInput.value.trim();
+    const g = gradeSelect.value;
+    if(!n || !g){ alert("กรุณากรอกชื่อและเลือกระดับชั้นก่อนเริ่มภารกิจ"); return; }
+    state.name = n; state.grade = g; state.startTime = Date.now();
+    state.screen = "show"; render(); startCountdown();
+  }}, "เริ่มภารกิจ");
+  form.appendChild(startBtn);
+  wrap.appendChild(form);
+  wrap.appendChild(el("div",{class:"mission-brief"},
+    el("b",{},"สรุปภารกิจ: "), "SHOW 5 ข้อ (วัดความรู้พื้นฐาน) → LEARN 10 ภาระงาน (6 ภาระงานเรียนรู้ผ่านกราฟ + 4 ภาระงานปฏิบัติแบบลากวาง: ต่อวงจร 2 ระบบ และเขียนโปรแกรมบล็อก 2 สถานการณ์ พร้อมปุ่มทดสอบระบบ) → APPLY 5 กิจกรรม (ปรับพารามิเตอร์แบบ real-time) → REFLECT (ประเมินตนเอง) — ระบบจะยังไม่เฉลยคำตอบระหว่างทำ แต่จะสรุปรายงานทั้งหมดเมื่อจบภารกิจ"
+  ));
+  return wrap;
+}
+
+/* =========================================================
+   RENDER: SHOW
+   ========================================================= */
+function renderShow(){
+  const i = state.showIdx;
+  const q = SHOW_QUESTIONS[i];
+  const panel = el("div",{class:"panel show-accent"});
+  panel.appendChild(el("div",{class:"eyebrow", style:"--accent:#3FCFB4"}, el("span",{class:"dot"}), "SHOW · แสดงสิ่งที่รู้"));
+  panel.appendChild(progressBar(i, SHOW_QUESTIONS.length, "คำถามที่"));
+  panel.appendChild(el("div",{class:"q-index"}, "ข้อ " + (i+1) + " / " + SHOW_QUESTIONS.length));
+  panel.appendChild(el("div",{class:"q-text"}, q.text));
+
+  const choicesWrap = el("div",{class:"choices"});
+  q.choices.forEach((c,idx)=>{
+    const selected = state.showAnswers[q.id]===idx;
+    const row = el("div",{class:"choice"+(selected?" selected":"")});
+    const radio = el("input",{type:"radio", name:"show_"+q.id, id:"show_"+q.id+"_"+idx, onchange:()=>{
+      state.showAnswers[q.id]=idx; render();
+    }});
+    if(selected) radio.checked = true;
+    row.appendChild(radio);
+    row.appendChild(el("label",{for:"show_"+q.id+"_"+idx}, c));
+    choicesWrap.appendChild(row);
+  });
+  panel.appendChild(choicesWrap);
+
+  const canNext = state.showAnswers[q.id]!==undefined;
+  const btnRow = el("div",{class:"btn-row"});
+  btnRow.appendChild(i>0 ? el("button",{class:"btn btn-ghost", onclick:()=>{state.showIdx--; render();}},"← ย้อนกลับ") : el("span",{}));
+  btnRow.appendChild(el("button",{class:"btn btn-primary", disabled:!canNext, onclick:()=>{
+    if(i<SHOW_QUESTIONS.length-1){ state.showIdx++; }
+    else { state.screen="learn"; state.learnIdx=0; }
+    render();
+  }}, i<SHOW_QUESTIONS.length-1 ? "ข้อถัดไป →" : "ไปยังขั้นตอน LEARN →"));
+  panel.appendChild(btnRow);
+  return panel;
+}
+
+/* =========================================================
+   RENDER: LEARN
+   ========================================================= */
+function renderLearn(){
+  const i = state.learnIdx;
+  const t = LEARN_TASKS[i];
+  const kind = t.kind || "mc";
+  const panel = el("div",{class:"panel learn-accent"});
+  panel.appendChild(el("div",{class:"eyebrow", style:"--accent:#F2A93B"}, el("span",{class:"dot"}), "LEARN · เรียนรู้"));
+  panel.appendChild(progressBar(i, LEARN_TASKS.length, "ภาระงานที่"));
+  panel.appendChild(el("div",{class:"concept-tag"}, t.concept));
+  panel.appendChild(el("h2",{class:"kicker-title"}, t.title));
+  panel.appendChild(el("p",{class:"lede"}, t.text));
+
+  let chartBoxId = null;
+  let canNext = false;
+
+  if(kind === "mc"){
+    chartBoxId = "chart_"+t.id;
+    panel.appendChild(el("div",{class:"chart-box"}, el("canvas",{id:chartBoxId})));
+
+    panel.appendChild(el("div",{class:"q-text", style:"font-size:1.02rem;margin-top:10px;"}, t.question.text));
+    const choicesWrap = el("div",{class:"choices"});
+    t.question.choices.forEach((c,idx)=>{
+      const selected = state.learnAnswers[t.id]===idx;
+      const row = el("div",{class:"choice"+(selected?" selected":"")});
+      const radio = el("input",{type:"radio", name:"learn_"+t.id, id:"learn_"+t.id+"_"+idx, onchange:()=>{
+        state.learnAnswers[t.id]=idx; render();
+      }});
+      if(selected) radio.checked = true;
+      row.appendChild(radio);
+      row.appendChild(el("label",{for:"learn_"+t.id+"_"+idx}, c));
+      choicesWrap.appendChild(row);
+    });
+    panel.appendChild(choicesWrap);
+    canNext = state.learnAnswers[t.id]!==undefined;
+  } else {
+    if(kind === "circuit") renderCircuitTask(panel, t);
+    else if(kind === "blocks") renderBlocksTask(panel, t);
+    else if(kind === "fireblocks") renderFireBlocksTask(panel, t);
+    panel.appendChild(buildChipPool(t));
+    canNext = dragTaskComplete(t);
+  }
+
+  const btnRow = el("div",{class:"btn-row"});
+  btnRow.appendChild(i>0 ? el("button",{class:"btn btn-ghost", onclick:()=>{stopAnim(); state.learnIdx--; state.selectedChip=null; render();}},"← ย้อนกลับ") : el("span",{}));
+  btnRow.appendChild(el("button",{class:"btn btn-primary", disabled:!canNext, onclick:()=>{
+    stopAnim();
+    state.selectedChip = null;
+    if(i<LEARN_TASKS.length-1){ state.learnIdx++; }
+    else { state.screen="apply"; state.applyIdx=0; }
+    render();
+  }}, i<LEARN_TASKS.length-1 ? "ภาระงานถัดไป →" : "ไปยังขั้นตอน APPLY →"));
+  panel.appendChild(btnRow);
+  if(kind !== "mc" && !canNext){
+    panel.appendChild(el("div",{class:"help-note"},"กรุณาลากบล็อก/อุปกรณ์ไปวางให้ครบทุกช่องก่อนไปต่อ (แตะที่ชิ้นส่วนแล้วแตะช่องว่างก็ได้ · แตะช่องที่วางแล้วเพื่อเอาออก)"));
+  }
+
+  if(chartBoxId) setTimeout(()=>drawLearnChart(chartBoxId, t.chart), 0);
+  return panel;
+}
+
+/* ---------- Drag & drop helpers ---------- */
+function dragAnswersFor(taskId){
+  if(!state.dragAnswers[taskId]) state.dragAnswers[taskId] = {};
+  return state.dragAnswers[taskId];
+}
+function dragTaskComplete(t){
+  const ans = dragAnswersFor(t.id);
+  return t.slots.every(s=>ans[s.id]);
+}
+function placedItemIds(t){
+  const ans = dragAnswersFor(t.id);
+  return Object.values(ans).filter(Boolean);
+}
+function placeChip(t, slotId, itemId){
+  stopAnim();
+  const ans = dragAnswersFor(t.id);
+  // ชิ้นหนึ่งวางได้ช่องเดียว: ถ้าถูกวางที่อื่นอยู่ ให้ย้ายมาช่องใหม่
+  Object.keys(ans).forEach(k=>{ if(ans[k]===itemId) delete ans[k]; });
+  ans[slotId] = itemId;
+  state.selectedChip = null;
+  render();
+}
+function clearSlot(t, slotId){
+  stopAnim();
+  const ans = dragAnswersFor(t.id);
+  delete ans[slotId];
+  render();
+}
+function buildDropzone(t, slot, placeholder){
+  const ans = dragAnswersFor(t.id);
+  const itemId = ans[slot.id];
+  const item = itemId ? t.items.find(x=>x.id===itemId) : null;
+  const zone = el("div",{
+    class:"dropzone"+(item?" filled":""),
+    title: item ? "แตะเพื่อเอาออก" : slot.label
+  }, item ? item.label : (placeholder || slot.label || "ลากมาวางที่นี่"));
+
+  zone.addEventListener("dragover",(e)=>{ e.preventDefault(); zone.classList.add("over"); });
+  zone.addEventListener("dragleave",()=>zone.classList.remove("over"));
+  zone.addEventListener("drop",(e)=>{
+    e.preventDefault(); zone.classList.remove("over");
+    const id = e.dataTransfer.getData("text/plain");
+    if(id) placeChip(t, slot.id, id);
+  });
+  zone.addEventListener("click",()=>{
+    if(state.selectedChip){ placeChip(t, slot.id, state.selectedChip); }
+    else if(item){ clearSlot(t, slot.id); }
+  });
+  return zone;
+}
+function buildChipPool(t){
+  const used = placedItemIds(t);
+  const remaining = t.items.filter(it=>used.indexOf(it.id)===-1);
+  const pool = el("div",{class:"chip-pool"+(remaining.length===0?" empty":"")});
+  remaining.forEach(it=>{
+    const chip = el("div",{
+      class:"chip"+(it.type==="cond"?" cond":"")+(state.selectedChip===it.id?" selected":""),
+      draggable:"true"
+    }, it.label);
+    chip.addEventListener("dragstart",(e)=>{ e.dataTransfer.setData("text/plain", it.id); });
+    chip.addEventListener("click",()=>{
+      state.selectedChip = (state.selectedChip===it.id) ? null : it.id;
+      render();
+    });
+    pool.appendChild(chip);
+  });
+  return el("div",{},
+    el("div",{class:"dd-hint"}, remaining.length===0
+      ? "วางครบทุกช่องแล้ว — ตรวจทานอีกครั้งได้ โดยแตะช่องที่วางไว้เพื่อเอาชิ้นส่วนออก"
+      : "ชิ้นส่วนที่เหลือ (ลากไปวาง หรือแตะเลือกแล้วแตะช่องว่าง):"),
+    pool
+  );
+}
+
+/* ---------- LEARN 7: Tinkercad-style electronics workbench ---------- */
+function renderCircuitTask(panel, t){
+  const byId = id => t.slots.find(s=>s.id===id);
+  const ans = dragAnswersFor(t.id);
+  const wireStyle = (id, color) => ans[id]
+    ? `stroke:${color};stroke-width:3.5;`
+    : "stroke:#33485A;stroke-width:2.5;stroke-dasharray:5 5;";
+
+  // ---- แถบความก้าวหน้าในการวางอุปกรณ์ ----
+  const placed = t.slots.filter(sl=>ans[sl.id]).length;
+  const total  = t.slots.length;
+  const progPct = Math.round((placed/total)*100);
+  const prog = el("div",{class:"circ-progress"});
+  prog.appendChild(el("div",{class:"cp-head"},
+    el("span",{},"ความก้าวหน้าในการวางอุปกรณ์"),
+    el("span",{class:"cp-pct mono"}, progPct + "%  (" + placed + "/" + total + " ตำแหน่ง)")
+  ));
+  const track = el("div",{class:"cp-track"});
+  track.appendChild(el("div",{class:"cp-fill"+(progPct===100?" done":""), style:"width:"+progPct+"%;"}));
+  prog.appendChild(track);
+  panel.appendChild(prog);
+
+  const wrap = el("div",{class:"tinker-wrap"});
+  wrap.appendChild(el("div",{class:"tinker-bar"},
+    el("span",{class:"tdot", style:"background:#E5484D;"}),
+    el("span",{class:"tdot", style:"background:#F2A93B;"}),
+    el("span",{class:"tdot", style:"background:#6FCF97;"}),
+    el("span",{style:"margin-left:6px;"}, t.board.title || "RESCUE-BOT · Circuit Workbench"),
+    el("span",{class:"tk-bar-hint", style:"margin-left:auto;"},"ลากอุปกรณ์จากกล่องด้านล่างมาวางบนพื้นที่ทำงาน")
+  ));
+
+  const canvas = el("div",{class:"tinker-canvas"});
+  canvas.appendChild(el("div",{html: t.board.svg(wireStyle)}));
+
+  (t.board.slots||[]).forEach(pos=>{
+    const zone = buildDropzone(t, byId(pos.id), pos.ph);
+    zone.classList.remove("dropzone");
+    zone.classList.add("tk-slot");
+    if(ans[pos.id]) zone.classList.add("filled");
+    zone.style.left = pos.left+"%";
+    zone.style.top  = pos.top+"%";
+    zone.style.width = pos.w;
+    zone.style.height = pos.h;
+    canvas.appendChild(zone);
+  });
+  (t.board.pins||[]).forEach(pn=>{
+    const p = el("div",{class:"tk-pin"}, pn.label);
+    p.style.left = pn.left+"%"; p.style.top = pn.top+"%";
+    canvas.appendChild(p);
+  });
+
+  wrap.appendChild(canvas);
+  wrap.appendChild(el("div",{class:"tk-caption"}, t.board.caption));
+  panel.appendChild(wrap);
+
+  // ---- ปุ่มทดสอบระบบ + รายงานจำนวนตำแหน่งที่ผิด ----
+  const ready = dragTaskComplete(t);
+  const runs = state.testRuns[t.id] || 0;
+  const res  = state.testResult[t.id];
+  panel.appendChild(el("div",{class:"run-bar"},
+    el("button",{class:"btn btn-run", disabled:!ready, onclick:()=>runCircuitTest(t)},
+      runs>0 ? "⚡ ทดสอบระบบอีกครั้ง" : "⚡ ทดสอบระบบ"),
+    el("span",{class:"run-count"}, "ทดสอบไปแล้ว " + runs + " ครั้ง"),
+    (runs>0) ? el("button",{class:"btn btn-ghost", style:"padding:7px 14px;font-size:.82rem;", onclick:()=>{
+      state.testResult[t.id]=null; render();
+    }},"ล้างผลทดสอบ") : null
+  ));
+  if(!ready){
+    panel.appendChild(el("div",{class:"dd-hint"},"วางอุปกรณ์ให้ครบทุกตำแหน่งก่อน จึงจะกดทดสอบระบบได้"));
+  }
+
+  if(res){
+    const ok = res.wrong === 0;
+    const box = el("div",{class:"run-result "+(ok?"ok":"fail")});
+    box.appendChild(el("div",{class:"rr-title"}, ok
+      ? "✔ ผลการทดสอบครั้งที่ " + runs + ": ระบบทำงานถูกต้องทั้งหมด"
+      : "✘ ผลการทดสอบครั้งที่ " + runs + ": ระบบยังทำงานไม่ได้ — พบข้อผิดพลาด " + res.wrong + " ตำแหน่ง"));
+    box.appendChild(el("div",{class:"rr-detail"}, ok
+      ? t.board.okMessage
+      : "ต่ออุปกรณ์ถูกต้องแล้ว " + res.correct + " จาก " + res.total + " ตำแหน่ง · ลองทบทวนว่าอุปกรณ์แต่ละชิ้นทำหน้าที่อะไร และสัญญาณต้องวิ่งจากไหนไปไหน แล้วแก้เฉพาะจุดที่สงสัยก่อนทดสอบใหม่"));
+    box.appendChild(el("div",{class:"run-log"},
+      "สรุป: ถูกต้อง " + res.correct + "/" + res.total + " ตำแหน่ง · ผิดพลาด " + res.wrong + " ตำแหน่ง"));
+    panel.appendChild(box);
+  }
+}
+
+/* ทดสอบวงจร: รายงานเฉพาะ "จำนวน" ตำแหน่งที่ผิด ไม่ระบุว่าตำแหน่งไหน เพื่อไม่ให้เป็นการเฉลย */
+function runCircuitTest(t){
+  const ans = dragAnswersFor(t.id);
+  const correct = t.slots.filter(sl=>ans[sl.id]===sl.correct).length;
+  state.testRuns[t.id] = (state.testRuns[t.id]||0) + 1;
+  state.testResult[t.id] = {correct:correct, total:t.slots.length, wrong:t.slots.length-correct};
+  render();
+}
+
+/* ---------- LEARN 8: block program + ตัวจำลองการทดสอบ ---------- */
+const BOT_MAP = [
+  ["bot","","obs","","",""],
+  ["","","obs","","obs",""],
+  ["","","","","obs",""],
+  ["obs","","obs","","",""],
+  ["","","","","","valve"]
+];
+const BOT_DIRS = [{r:0,c:1,n:"ตะวันออก →"},{r:1,c:0,n:"ใต้ ↓"},{r:0,c:-1,n:"ตะวันตก ←"},{r:-1,c:0,n:"เหนือ ↑"}];
+const BOT_ROWS = BOT_MAP.length, BOT_COLS = BOT_MAP[0].length;
+function botIsObstacle(r,c){
+  if(r<0||r>=BOT_ROWS||c<0||c>=BOT_COLS) return true;
+  return BOT_MAP[r][c]==="obs";
+}
+function botIsValve(r,c){ return BOT_MAP[r][c]==="valve"; }
+
+/* จำลองการทำงานของโปรแกรมบล็อกที่ผู้เรียนประกอบไว้ */
+function simulateBlockProgram(prog, maxSteps, labels){
+  maxSteps = maxSteps || 200;
+  labels = labels || {};
+  const nameOf = id => labels[id] || id || "(ว่าง)";
+  let r=0, c=0, d=0;                 // เริ่มที่มุมบนซ้าย หันไปทางตะวันออก
+  let valveClosed=false, steps=0, halted=false, bumps=0;
+  const visited=[[0,0]];
+  const frames=[{r:0, c:0, d:0, note:"เริ่มภารกิจ ที่แถว 1 คอลัมน์ 1 หันไปทาง"+BOT_DIRS[0].n, step:0}];
+  const cond = (id)=>{
+    if(id==="k_atvalve") return botIsValve(r,c);
+    if(id==="k_obstacle"){ const n=BOT_DIRS[d]; return botIsObstacle(r+n.r, c+n.c); }
+    if(id==="k_battzero") return steps>=60;
+    return false;
+  };
+  const act = (id)=>{
+    if(id==="k_turnright"){ d=(d+1)%4; return "เลี้ยวขวา → หันไปทาง"+BOT_DIRS[d].n; }
+    if(id==="k_forward"){
+      const n=BOT_DIRS[d];
+      if(!botIsObstacle(r+n.r, c+n.c)){ r+=n.r; c+=n.c; visited.push([r,c]); return "เดินหน้า 1 ช่อง → แถว "+(r+1)+" คอลัมน์ "+(c+1); }
+      bumps++; return "พยายามเดินหน้าแต่ติดสิ่งกีดขวาง (อยู่ที่เดิม)";
+    }
+    if(id==="k_closevalve"){
+      if(botIsValve(r,c)){ valveClosed=true; return "ปิดวาล์วแก๊สสำเร็จ"; }
+      return "สั่งปิดวาล์ว แต่หุ่นยนต์ไม่ได้อยู่ที่ตำแหน่งวาล์ว";
+    }
+    if(id==="k_stop"){ halted=true; return "หยุดการทำงานถาวร"; }
+    return "ส่งเสียงเตือน (ไม่เคลื่อนที่)";
+  };
+  let reason="";
+  while(steps<maxSteps){
+    if(prog.b1 && cond(prog.b1)){
+      reason="exit";
+      frames.push({r, c, d, note:"เงื่อนไขหยุดลูปเป็นจริง ("+nameOf(prog.b1)+") → ออกจากการวนซ้ำ", step:steps});
+      break;
+    }
+    const branch = (prog.b2 && cond(prog.b2));
+    const note = act(branch ? prog.b3 : prog.b4);
+    steps++;
+    frames.push({
+      r, c, d, step:steps,
+      note:"รอบที่ "+steps+": "+(branch ? "เงื่อนไขเป็นจริง" : "เงื่อนไขเป็นเท็จ")+" → "+note
+    });
+    if(halted){ reason="halted"; break; }
+  }
+  if(!reason && steps>=maxSteps){
+    reason="timeout";
+    frames.push({r, c, d, note:"ครบ "+maxSteps+" รอบคำสั่งแล้วยังไม่จบ — หยุดการจำลอง", step:steps});
+  }
+  if(prog.b5){
+    const note = act(prog.b5);
+    frames.push({r, c, d, note:"หลังออกจากลูป: "+note, step:steps});
+  }
+  return {valveClosed, steps, r, c, facing:BOT_DIRS[d].n, reason, visited, bumps, frames};
+}
+
+/* ---- ตัวเล่นภาพเคลื่อนไหว: เดินทีละช่องตามผลการจำลอง ---- */
+let animTimer = null;
+function stopAnim(){
+  if(animTimer){ clearInterval(animTimer); animTimer = null; }
+  state.anim = null;
+}
+function runBlockTest(t){
+  stopAnim();
+  const labels = {};
+  t.items.forEach(it=>{ labels[it.id] = it.label; });
+  const res = simulateBlockProgram(dragAnswersFor(t.id), 200, labels);
+  state.testRuns[t.id] = (state.testRuns[t.id]||0) + 1;
+  state.testResult[t.id] = null;          // ซ่อนผลไว้ก่อน ให้ดูหุ่นยนต์เดินก่อน
+  state.anim = {taskId:t.id, frames:res.frames, idx:0, result:res};
+  render();
+  animTimer = setInterval(()=>tickAnim(t), 420);
+}
+function tickAnim(t){
+  const a = state.anim;
+  const gridEl = document.getElementById("botGrid");
+  if(!a || !gridEl){ stopAnim(); return; }   // ผู้ใช้ออกจากหน้านี้แล้ว
+  if(a.idx >= a.frames.length - 1){ finishAnim(t); return; }
+  a.idx++;
+  paintAnimFrame();
+}
+function finishAnim(t){
+  const a = state.anim;
+  if(!a) return;
+  const res = a.result;
+  stopAnim();
+  state.testResult[t.id] = res;
+  render();
+}
+function paintAnimFrame(){
+  const a = state.anim;
+  if(!a) return;
+  const gridEl = document.getElementById("botGrid");
+  if(!gridEl) return;
+  const f = a.frames[a.idx];
+  const seen = {};
+  for(let k=0; k<=a.idx; k++){ seen[a.frames[k].r+","+a.frames[k].c] = true; }
+  paintGridCells(gridEl, {r:f.r, c:f.c, seen:seen});
+  const st = document.getElementById("animStatus");
+  if(st) st.textContent = f.note;
+  const pg = document.getElementById("animProgress");
+  if(pg) pg.textContent = "เฟรม " + (a.idx+1) + "/" + a.frames.length;
+}
+function paintGridCells(gridEl, view){
+  const cells = gridEl.children;
+  let i = 0;
+  for(let ri=0; ri<BOT_ROWS; ri++){
+    for(let ci=0; ci<BOT_COLS; ci++){
+      const cell = cells[i++];
+      if(!cell) continue;
+      const raw = BOT_MAP[ri][ci];
+      let cls = "gm-cell";
+      if(raw==="obs") cls += " obstacle";
+      else if(raw==="valve") cls += " valve";
+      let glyph = raw==="valve" ? "🔧" : raw==="obs" ? "▧" : "";
+      if(view){
+        if(view.seen && view.seen[ri+","+ci] && raw!=="obs") cls += " path";
+        if(view.r===ri && view.c===ci){ cls += " final"; glyph = "🤖"; }
+      } else if(raw==="bot"){
+        cls += " bot"; glyph = "🤖";
+      }
+      cell.className = cls;
+      cell.textContent = glyph;
+    }
+  }
+}
+
+function renderBlocksTask(panel, t){
+  const byId = id => t.slots.find(s=>s.id===id);
+  const result = state.testResult[t.id];
+  const anim = (state.anim && state.anim.taskId===t.id) ? state.anim : null;
+
+  // ตารางสถานการณ์ (วาดเซลล์เปล่าไว้ก่อน แล้วให้ paintGridCells กำหนดสถานะ)
+  const grid = el("div",{class:"grid-map", id:"botGrid"});
+  for(let k=0; k<BOT_ROWS*BOT_COLS; k++) grid.appendChild(el("div",{class:"gm-cell"}));
+  panel.appendChild(grid);
+
+  let view = null;
+  if(anim){
+    const f = anim.frames[anim.idx];
+    const seen = {};
+    for(let k=0; k<=anim.idx; k++){ seen[anim.frames[k].r+","+anim.frames[k].c] = true; }
+    view = {r:f.r, c:f.c, seen:seen};
+  } else if(result){
+    const seen = {};
+    result.visited.forEach(v=>{ seen[v[0]+","+v[1]] = true; });
+    view = {r:result.r, c:result.c, seen:seen};
+  }
+  paintGridCells(grid, view);
+
+  panel.appendChild(el("div",{class:"grid-legend"},
+    "🤖 หุ่นยนต์ (เริ่มมุมบนซ้าย หันไปทางตะวันออก →) · ▧ สิ่งกีดขวาง · 🔧 วาล์วแก๊สที่ต้องไปปิด"));
+
+  if(anim){
+    panel.appendChild(el("div",{class:"anim-status"},
+      el("span",{class:"anim-dot"}),
+      el("span",{id:"animStatus"}, anim.frames[anim.idx].note),
+      el("span",{class:"run-count", id:"animProgress", style:"margin-left:auto;"},
+        "เฟรม " + (anim.idx+1) + "/" + anim.frames.length)
+    ));
+  }
+
+  const prog = el("div",{class:"block-prog"});
+  prog.appendChild(el("div",{class:"block-row"}, el("span",{class:"bl-kw"},"เมื่อเริ่มภารกิจ")));
+  prog.appendChild(el("div",{class:"block-row blk-indent-1"},
+    el("span",{class:"bl-kw"},"ทำซ้ำจนกระทั่ง"), buildDropzone(t, byId("b1"))));
+  prog.appendChild(el("div",{class:"block-row blk-indent-2"},
+    el("span",{class:"bl-kw"},"ถ้า"), buildDropzone(t, byId("b2")), el("span",{class:"bl-kw"},"แล้ว")));
+  prog.appendChild(el("div",{class:"block-row blk-indent-3"}, buildDropzone(t, byId("b3"))));
+  prog.appendChild(el("div",{class:"block-row blk-indent-2"}, el("span",{class:"bl-kw"},"มิฉะนั้น")));
+  prog.appendChild(el("div",{class:"block-row blk-indent-3"}, buildDropzone(t, byId("b4"))));
+  prog.appendChild(el("div",{class:"block-row blk-indent-1"},
+    el("span",{class:"bl-text", style:"color:var(--muted);"},"— จบการวนซ้ำ —")));
+  prog.appendChild(el("div",{class:"block-row"}, buildDropzone(t, byId("b5"))));
+  panel.appendChild(prog);
+
+  // แถบปุ่มทดสอบ + ตัวนับจำนวนครั้ง
+  const ready = dragTaskComplete(t);
+  const runs = state.testRuns[t.id] || 0;
+  const playing = !!anim;
+  const runBar = el("div",{class:"run-bar"},
+    el("button",{class:"btn btn-run", disabled:(!ready || playing), onclick:()=>runBlockTest(t)},
+      playing ? "⏳ กำลังเดิน..." : (runs>0 ? "▶ ทดสอบอีกครั้ง" : "▶ ทดสอบโปรแกรม")),
+    playing ? el("button",{class:"btn btn-ghost", style:"padding:7px 14px;font-size:.82rem;", onclick:()=>{
+      const a = state.anim;
+      if(a){ a.idx = a.frames.length-1; finishAnim(t); }
+    }},"⏭ ข้ามไปดูผลเลย") : null,
+    el("span",{class:"run-count"}, "ทดสอบไปแล้ว " + runs + " ครั้ง"),
+    (runs>0 && !playing) ? el("button",{class:"btn btn-ghost", style:"padding:7px 14px;font-size:.82rem;", onclick:()=>{
+      stopAnim(); state.testResult[t.id]=null; render();
+    }},"ล้างผลทดสอบ") : null
+  );
+  panel.appendChild(runBar);
+  if(!ready){
+    panel.appendChild(el("div",{class:"dd-hint"},"วางบล็อกให้ครบทุกช่องก่อน จึงจะกดทดสอบโปรแกรมได้"));
+  }
+
+  if(result){
+    const ok = result.valveClosed;
+    const box = el("div",{class:"run-result "+(ok?"ok":"fail")});
+    box.appendChild(el("div",{class:"rr-title"}, ok
+      ? "✔ ผลการทดสอบครั้งที่ " + runs + ": ภารกิจสำเร็จ — หุ่นยนต์ไปถึงวาล์วและปิดวาล์วแก๊สได้"
+      : "✘ ผลการทดสอบครั้งที่ " + runs + ": ภารกิจยังไม่สำเร็จ"));
+    let detail;
+    if(ok){
+      detail = "ใช้ " + result.steps + " รอบคำสั่ง · เดินผ่าน " + result.visited.length + " ช่อง · จบที่แถว " + (result.r+1) + " คอลัมน์ " + (result.c+1);
+    } else if(result.reason==="timeout"){
+      detail = "โปรแกรมวนซ้ำไม่จบภายใน 200 รอบ (อาจวนอยู่กับที่หรือไม่มีเงื่อนไขหยุดที่ถูกต้อง) · หยุดที่แถว " + (result.r+1) + " คอลัมน์ " + (result.c+1) + " หันไปทาง" + result.facing;
+    } else if(result.reason==="halted"){
+      detail = "โปรแกรมถูกสั่งหยุดกลางทางที่แถว " + (result.r+1) + " คอลัมน์ " + (result.c+1) + " จึงไปไม่ถึงวาล์ว";
+    } else {
+      detail = "ออกจากการวนซ้ำที่แถว " + (result.r+1) + " คอลัมน์ " + (result.c+1) + " หันไปทาง" + result.facing +
+        " แต่วาล์วยังไม่ถูกปิด (ตรวจสอบเงื่อนไขหยุดลูป และคำสั่งหลังออกจากลูป)";
+    }
+    box.appendChild(el("div",{class:"rr-detail"}, detail));
+    box.appendChild(el("div",{class:"run-log"},
+      "รอบคำสั่งที่ใช้: " + result.steps + " · ชนสิ่งกีดขวาง: " + result.bumps + " ครั้ง · สถานะวาล์ว: " + (ok?"ปิดแล้ว":"ยังเปิดอยู่")));
+    box.appendChild(el("div",{class:"rr-detail", style:"margin-top:8px;"},
+      "ช่องสีฟ้าบนตารางด้านบนคือเส้นทางที่หุ่นยนต์เดินผ่านจริงในการทดสอบครั้งนี้ ปรับบล็อกแล้วกดทดสอบซ้ำได้ไม่จำกัดครั้ง"));
+    panel.appendChild(box);
+  }
+}
+
+/* ---------- LEARN 10: โปรแกรมควบคุมระบบดับเพลิง + ตัวจำลอง ---------- */
+const FIRE_START_TEMP = 85, FIRE_START_WATER = 100, FIRE_MAX_TICKS = 60;
+
+function simulateFireProgram(prog, labels){
+  labels = labels || {};
+  let temp = FIRE_START_TEMP, water = FIRE_START_WATER;
+  let ticks = 0, halted = false, reported = false, dry = false;
+  let pump = "off";
+  const frames = [{temp:temp, water:water, pump:"off", tick:0,
+    note:"เริ่มระบบดับเพลิง · อุณหภูมิ " + temp + "°C · น้ำ " + water + "%"}];
+  const cond = (id)=>{
+    if(id==="k_cool") return temp < 45;
+    if(id==="k_hot")  return temp >= 60;
+    if(id==="k_warm") return temp >= 20;
+    return false;
+  };
+  const act = (id)=>{
+    if(id==="k_pumphigh"){
+      if(water>=9){ water-=9; temp-=9; pump="high"; return "เปิดปั๊มแรงดันสูง (-9°C, ใช้น้ำ 9%)"; }
+      dry=true; return "น้ำไม่พอสำหรับแรงดันสูง";
+    }
+    if(id==="k_pumplow"){
+      if(water>=3){ water-=3; temp-=5; pump="low"; return "ฉีดแรงดันต่ำ (-5°C, ใช้น้ำ 3%)"; }
+      dry=true; return "น้ำไม่พอ";
+    }
+    if(id==="k_servosweep"){
+      if(water>=1){ water-=1; temp-=3; return "กวาดเซอร์โวหัวฉีด 30°–150° (-3°C)"; }
+      dry=true; return "น้ำไม่พอสำหรับการกวาดหัวฉีด";
+    }
+    if(id==="k_report"){ pump="off"; reported=true; return "ปิดปั๊มและรายงานศูนย์ควบคุม"; }
+    if(id==="k_halt"){ halted=true; return "หยุดระบบถาวร"; }
+    if(id==="k_led"){ return "เปิดไฟสัญญาณเตือนอย่างเดียว (ไม่ได้ฉีดน้ำ)"; }
+    return "(ยังไม่ได้วางบล็อก)";
+  };
+  let reason="";
+  while(ticks < FIRE_MAX_TICKS){
+    if(prog.c1 && cond(prog.c1)){
+      reason="cooled";
+      frames.push({temp:Math.round(temp), water:water, pump:pump, tick:ticks,
+        note:"เงื่อนไขหยุดลูปเป็นจริง ("+(labels[prog.c1]||prog.c1)+") → ออกจากการวนซ้ำ"});
+      break;
+    }
+    const hot = prog.c2 && cond(prog.c2);
+    let note;
+    if(hot){ note = act(prog.c3) + " + " + act(prog.c4); }
+    else { note = act(prog.c5); }
+    const growth = temp>=60 ? 6 : 2;
+    temp += growth;
+    if(temp < 0) temp = 0;
+    ticks++;
+    frames.push({temp:Math.round(temp), water:water, pump:pump, tick:ticks,
+      note:"รอบที่ "+ticks+": "+(hot?"ตรวจพบการเผาไหม้รุนแรง":"ยังไม่ร้อนจัด")+" → "+note+" · ไฟลุกเพิ่ม +"+growth+"°C"});
+    if(halted){ reason="halted"; break; }
+  }
+  if(!reason && ticks>=FIRE_MAX_TICKS){
+    reason="timeout";
+    frames.push({temp:Math.round(temp), water:water, pump:pump, tick:ticks,
+      note:"ครบ "+FIRE_MAX_TICKS+" รอบแล้วไฟยังไม่ดับ — หยุดการจำลอง"});
+  }
+  if(prog.c6){
+    const n = act(prog.c6);
+    frames.push({temp:Math.round(temp), water:water, pump:pump, tick:ticks, note:"หลังออกจากลูป: "+n});
+  }
+  const success = (temp < 45) && reported && !halted;
+  return {success:success, temp:Math.round(temp), water:water, ticks:ticks,
+    reason:reason, reported:reported, dry:dry, halted:halted, frames:frames};
+}
+
+function runFireTest(t){
+  stopAnim();
+  const labels = {};
+  t.items.forEach(it=>{ labels[it.id] = it.label; });
+  const res = simulateFireProgram(dragAnswersFor(t.id), labels);
+  state.testRuns[t.id] = (state.testRuns[t.id]||0) + 1;
+  state.testResult[t.id] = null;
+  state.anim = {taskId:t.id, frames:res.frames, idx:0, result:res, kind:"fire"};
+  render();
+  animTimer = setInterval(()=>tickFireAnim(t), 420);
+}
+function tickFireAnim(t){
+  const a = state.anim;
+  if(!a || !document.getElementById("fireGauge")){ stopAnim(); return; }
+  if(a.idx >= a.frames.length - 1){
+    const res = a.result;
+    stopAnim();
+    state.testResult[t.id] = res;
+    render();
+    return;
+  }
+  a.idx++;
+  paintFireFrame();
+}
+function paintFireFrame(){
+  const a = state.anim;
+  if(!a) return;
+  const f = a.frames[a.idx];
+  const tempFill = document.getElementById("fireTempFill");
+  const waterFill = document.getElementById("fireWaterFill");
+  const tempVal = document.getElementById("fireTempVal");
+  const waterVal = document.getElementById("fireWaterVal");
+  const st = document.getElementById("animStatus");
+  const pg = document.getElementById("animProgress");
+  if(tempFill){
+    tempFill.style.width = Math.max(0, Math.min(100, (f.temp/120)*100)) + "%";
+    tempFill.className = "gauge-fill " + (f.temp>=60 ? "hot" : (f.temp<45 ? "safe" : "warm"));
+  }
+  if(waterFill) waterFill.style.width = Math.max(0, f.water) + "%";
+  if(tempVal) tempVal.textContent = f.temp + "°C";
+  if(waterVal) waterVal.textContent = f.water + "%";
+  if(st) st.textContent = f.note;
+  if(pg) pg.textContent = "เฟรม " + (a.idx+1) + "/" + a.frames.length;
+}
+
+function renderFireBlocksTask(panel, t){
+  const byId = id => t.slots.find(s=>s.id===id);
+  const result = state.testResult[t.id];
+  const anim = (state.anim && state.anim.taskId===t.id) ? state.anim : null;
+  const view = anim ? anim.frames[anim.idx]
+             : (result ? {temp:result.temp, water:result.water}
+                       : {temp:FIRE_START_TEMP, water:FIRE_START_WATER});
+  const tempCls = view.temp>=60 ? "hot" : (view.temp<45 ? "safe" : "warm");
+
+  // มาตรวัดอุณหภูมิ + ปริมาณน้ำ
+  const gauges = el("div",{class:"fire-gauges", id:"fireGauge"},
+    el("div",{class:"gauge-row"},
+      el("span",{class:"gauge-label"},"🌡 อุณหภูมิจุดเผาไหม้"),
+      el("div",{class:"gauge-track"},
+        el("div",{class:"gauge-fill "+tempCls, id:"fireTempFill",
+          style:"width:"+Math.max(0,Math.min(100,(view.temp/120)*100))+"%;"})),
+      el("span",{class:"gauge-val mono", id:"fireTempVal"}, view.temp+"°C")
+    ),
+    el("div",{class:"gauge-row"},
+      el("span",{class:"gauge-label"},"💧 ปริมาณน้ำคงเหลือ"),
+      el("div",{class:"gauge-track"},
+        el("div",{class:"gauge-fill water", id:"fireWaterFill", style:"width:"+Math.max(0,view.water)+"%;"})),
+      el("span",{class:"gauge-val mono", id:"fireWaterVal"}, view.water+"%")
+    ),
+    el("div",{class:"gauge-legend"},"เป้าหมาย: ลดอุณหภูมิให้ต่ำกว่า 45°C แล้วรายงานศูนย์ควบคุม · ถ้าอุณหภูมิ ≥ 60°C ไฟจะลุกเพิ่มเร็วกว่าเดิม")
+  );
+  panel.appendChild(gauges);
+
+  if(anim){
+    panel.appendChild(el("div",{class:"anim-status"},
+      el("span",{class:"anim-dot"}),
+      el("span",{id:"animStatus"}, anim.frames[anim.idx].note),
+      el("span",{class:"run-count", id:"animProgress", style:"margin-left:auto;"},
+        "เฟรม "+(anim.idx+1)+"/"+anim.frames.length)
+    ));
+  }
+
+  const prog = el("div",{class:"block-prog"});
+  prog.appendChild(el("div",{class:"block-row"}, el("span",{class:"bl-kw"},"เมื่อเริ่มระบบดับเพลิง")));
+  prog.appendChild(el("div",{class:"block-row blk-indent-1"},
+    el("span",{class:"bl-kw"},"ทำซ้ำจนกระทั่ง"), buildDropzone(t, byId("c1"))));
+  prog.appendChild(el("div",{class:"block-row blk-indent-2"},
+    el("span",{class:"bl-text", style:"color:var(--muted);"},"อ่านค่าอุณหภูมิจากเซนเซอร์")));
+  prog.appendChild(el("div",{class:"block-row blk-indent-2"},
+    el("span",{class:"bl-kw"},"ถ้า"), buildDropzone(t, byId("c2")), el("span",{class:"bl-kw"},"แล้ว")));
+  prog.appendChild(el("div",{class:"block-row blk-indent-3"}, buildDropzone(t, byId("c3"))));
+  prog.appendChild(el("div",{class:"block-row blk-indent-3"}, buildDropzone(t, byId("c4"))));
+  prog.appendChild(el("div",{class:"block-row blk-indent-2"}, el("span",{class:"bl-kw"},"มิฉะนั้น")));
+  prog.appendChild(el("div",{class:"block-row blk-indent-3"}, buildDropzone(t, byId("c5"))));
+  prog.appendChild(el("div",{class:"block-row blk-indent-1"},
+    el("span",{class:"bl-text", style:"color:var(--muted);"},"— จบการวนซ้ำ —")));
+  prog.appendChild(el("div",{class:"block-row"}, buildDropzone(t, byId("c6"))));
+  panel.appendChild(prog);
+
+  const ready = dragTaskComplete(t);
+  const runs = state.testRuns[t.id] || 0;
+  const playing = !!anim;
+  panel.appendChild(el("div",{class:"run-bar"},
+    el("button",{class:"btn btn-run", disabled:(!ready||playing), onclick:()=>runFireTest(t)},
+      playing ? "⏳ กำลังทดสอบ..." : (runs>0 ? "▶ ทดสอบอีกครั้ง" : "▶ ทดสอบโปรแกรม")),
+    playing ? el("button",{class:"btn btn-ghost", style:"padding:7px 14px;font-size:.82rem;", onclick:()=>{
+      const a=state.anim;
+      if(a){ a.idx=a.frames.length-1; const r=a.result; stopAnim(); state.testResult[t.id]=r; render(); }
+    }},"⏭ ข้ามไปดูผลเลย") : null,
+    el("span",{class:"run-count"}, "ทดสอบไปแล้ว " + runs + " ครั้ง"),
+    (runs>0 && !playing) ? el("button",{class:"btn btn-ghost", style:"padding:7px 14px;font-size:.82rem;", onclick:()=>{
+      stopAnim(); state.testResult[t.id]=null; render();
+    }},"ล้างผลทดสอบ") : null
+  ));
+  if(!ready) panel.appendChild(el("div",{class:"dd-hint"},"วางบล็อกให้ครบทุกช่องก่อน จึงจะกดทดสอบโปรแกรมได้"));
+
+  if(result){
+    const ok = result.success;
+    const box = el("div",{class:"run-result "+(ok?"ok":"fail")});
+    box.appendChild(el("div",{class:"rr-title"}, ok
+      ? "✔ ผลการทดสอบครั้งที่ "+runs+": ดับไฟสำเร็จ — อุณหภูมิลดเหลือ "+result.temp+"°C และรายงานศูนย์ควบคุมแล้ว"
+      : "✘ ผลการทดสอบครั้งที่ "+runs+": ยังดับไฟไม่สำเร็จ"));
+    let detail;
+    if(ok){
+      detail = "ใช้ "+result.ticks+" รอบการทำงาน · ใช้น้ำไป "+(FIRE_START_WATER-result.water)+"% (เหลือ "+result.water+"%)";
+    } else if(result.halted){
+      detail = "ระบบถูกสั่งหยุดถาวรกลางทาง ขณะอุณหภูมิยังอยู่ที่ "+result.temp+"°C";
+    } else if(result.reason==="timeout"){
+      detail = "ครบ "+FIRE_MAX_TICKS+" รอบแล้วอุณหภูมิยังอยู่ที่ "+result.temp+"°C"+
+        (result.dry ? " และน้ำหมดถัง" : "")+" — การดับไฟไม่ทันกับการลุกลาม ลองทบทวนว่าคำสั่งใดควรทำงานตอนไฟรุนแรง";
+    } else if(!result.reported){
+      detail = "อุณหภูมิลดลงเหลือ "+result.temp+"°C แล้ว แต่ยังไม่ได้ปิดปั๊มและรายงานศูนย์ควบคุม — ตรวจสอบคำสั่งหลังออกจากลูป";
+    } else {
+      detail = "ออกจากการวนซ้ำขณะอุณหภูมิยังอยู่ที่ "+result.temp+"°C ซึ่งยังไม่ปลอดภัย — ตรวจสอบเงื่อนไขหยุดการวนซ้ำ";
+    }
+    box.appendChild(el("div",{class:"rr-detail"}, detail));
+    box.appendChild(el("div",{class:"run-log"},
+      "สรุป: อุณหภูมิสุดท้าย "+result.temp+"°C · น้ำคงเหลือ "+result.water+"% · จำนวนรอบ "+result.ticks+
+      " · รายงานศูนย์ควบคุม: "+(result.reported?"แล้ว":"ยังไม่ได้")));
+    panel.appendChild(box);
+  }
+}
+
+function drawLearnChart(canvasId, chartDef){
+  const ctx = document.getElementById(canvasId);
+  if(!ctx) return;
+  if(typeof Chart === "undefined"){
+    // Chart.js ยังไม่พร้อมใช้งาน (เช่น กำลังโหลด CDN สำรอง หรือเครือข่ายบล็อก CDN) — ลองใหม่อีกครั้งสั้น ๆ ก่อนแสดงตารางสำรอง
+    if(!drawLearnChart._retries) drawLearnChart._retries = {};
+    const tries = drawLearnChart._retries[canvasId] || 0;
+    if(tries < 20){
+      drawLearnChart._retries[canvasId] = tries + 1;
+      setTimeout(()=>drawLearnChart(canvasId, chartDef), 250);
+      return;
+    }
+    renderChartFallbackTable(ctx, chartDef);
+    return;
+  }
+  try{
+    chartInstances[canvasId] = new Chart(ctx, {
+      type: chartDef.type,
+      data:{
+        labels: chartDef.labels,
+        datasets: chartDef.datasets.map(d=>({
+          label:d.label, data:d.data,
+          borderColor:d.color, backgroundColor:chartDef.type==="bar" ? d.color+"CC" : d.color+"33",
+          borderWidth:2, tension:0.3, fill: chartDef.type==="line"
+        }))
+      },
+      options:{
+        responsive:true, maintainAspectRatio:false,
+        plugins:{ legend:{ labels:{ color:"#EAF2F1", font:{family:"Inter", size:11} } } },
+        scales:{
+          x:{ ticks:{color:"#85A0AA"}, grid:{color:"#26374380"} },
+          y:{ ticks:{color:"#85A0AA"}, grid:{color:"#26374380"} }
+        }
+      }
+    });
+  } catch(err){
+    renderChartFallbackTable(ctx, chartDef);
+  }
+}
+
+function renderChartFallbackTable(canvasEl, chartDef){
+  // แสดงข้อมูลเป็นตารางแทนกราฟ เมื่อไลบรารีกราฟโหลดไม่สำเร็จ เพื่อให้เนื้อหายังใช้งานได้ครบถ้วน
+  const box = canvasEl.closest(".chart-box");
+  if(!box) return;
+  box.style.height = "auto";
+  box.style.overflowX = "auto";
+  const table = el("table",{class:"mission-table"},
+    el("tr",{}, el("th",{},""), chartDef.labels.map(l=>el("th",{}, l))),
+    chartDef.datasets.map(d=>el("tr",{},
+      el("td",{}, d.label),
+      d.data.map(v=>el("td",{class:"mono"}, String(v)))
+    ))
+  );
+  const note = el("div",{class:"help-note"}, "ไม่สามารถโหลดไลบรารีสร้างกราฟได้ (อาจเกิดจากเครือข่ายบล็อก CDN) จึงแสดงข้อมูลเดียวกันเป็นตารางแทน");
+  box.innerHTML = "";
+  box.appendChild(note);
+  box.appendChild(table);
+}
+
+/* =========================================================
+   RENDER: APPLY
+   ========================================================= */
+function renderApply(){
+  const i = state.applyIdx;
+  const act = APPLY_ACTIVITIES[i];
+  const panel = el("div",{class:"panel apply-accent"});
+  panel.appendChild(el("div",{class:"eyebrow", style:"--accent:#FF6A39"}, el("span",{class:"dot"}), "APPLY · ประยุกต์ใช้"));
+  panel.appendChild(progressBar(i, APPLY_ACTIVITIES.length, "กิจกรรมที่"));
+  panel.appendChild(el("h2",{class:"kicker-title"}, act.title));
+  panel.appendChild(el("p",{class:"lede"}, act.intro));
+
+  if(!state.applyResults[act.id]){
+    if(act.kind==="weight3"){
+      state.applyResults[act.id] = {weights:[...act.defaultWeights]};
+    } else if(act.kind==="threshold3"){
+      state.applyResults[act.id] = {thresholds:{...act.defaultThresholds}};
+    } else if(act.kind==="threshold2"){
+      state.applyResults[act.id] = {threshold: act.defaultThreshold};
+    }
+  }
+  const st = state.applyResults[act.id];
+
+  if(act.kind==="weight3"){
+    act.factors.forEach((f, fi)=>{
+      const row = el("div",{class:"factor-slider"});
+      row.appendChild(el("div",{class:"fs-head"}, el("b",{},f.label), el("span",{class:"mono", id:"wval_"+act.id+"_"+fi}, st.weights[fi])));
+      const slider = el("input",{type:"range", min:"0", max:"100", value:st.weights[fi], oninput:(e)=>{
+        st.weights[fi] = parseInt(e.target.value);
+        document.getElementById("wval_"+act.id+"_"+fi).textContent = st.weights[fi];
+        updateApplyLiveA1A3A5(act, st);
+      }});
+      row.appendChild(slider);
+      panel.appendChild(row);
+    });
+  } else if(act.kind==="threshold3"){
+    ["lo","hi"].forEach(k=>{
+      const lbl = k==="lo" ? "เส้นเกณฑ์ ต่ำ / ปานกลาง" : "เส้นเกณฑ์ ปานกลาง / สูง";
+      const row = el("div",{class:"factor-slider"});
+      row.appendChild(el("div",{class:"fs-head"}, el("b",{},lbl), el("span",{class:"mono", id:"tval_"+act.id+"_"+k}, st.thresholds[k])));
+      const slider = el("input",{type:"range", min:"0", max:"100", value:st.thresholds[k], oninput:(e)=>{
+        st.thresholds[k] = parseInt(e.target.value);
+        document.getElementById("tval_"+act.id+"_"+k).textContent = st.thresholds[k];
+        updateApplyLiveA2(act, st);
+      }});
+      row.appendChild(slider);
+      panel.appendChild(row);
+    });
+  } else if(act.kind==="threshold2"){
+    const row = el("div",{class:"factor-slider"});
+    row.appendChild(el("div",{class:"fs-head"}, el("b",{},"เกณฑ์ตัดสินใจ GO / WAIT (ดัชนีอันตราย)"), el("span",{class:"mono", id:"t2val_"+act.id}, st.threshold)));
+    const slider = el("input",{type:"range", min:"0", max:"100", value:st.threshold, oninput:(e)=>{
+      st.threshold = parseInt(e.target.value);
+      document.getElementById("t2val_"+act.id).textContent = st.threshold;
+      updateApplyLiveA4(act, st);
+    }});
+    row.appendChild(slider);
+    panel.appendChild(row);
+  }
+
+  const readout = el("div",{class:"accuracy-readout", id:"acc_"+act.id});
+  readout.appendChild(el("div",{},"ความแม่นยำเทียบกับผลจริง"));
+  readout.appendChild(el("div",{class:"num", id:"accnum_"+act.id},"0%"));
+  panel.appendChild(readout);
+
+  const tableWrap = el("div",{id:"table_"+act.id});
+  panel.appendChild(tableWrap);
+
+  const btnRow = el("div",{class:"btn-row"});
+  btnRow.appendChild(i>0 ? el("button",{class:"btn btn-ghost", onclick:()=>{state.applyIdx--; render();}},"← ย้อนกลับ") : el("span",{}));
+  btnRow.appendChild(el("button",{class:"btn btn-apply", onclick:()=>{
+    if(i<APPLY_ACTIVITIES.length-1){ state.applyIdx++; }
+    else { state.screen="reflect"; }
+    render();
+  }}, i<APPLY_ACTIVITIES.length-1 ? "ยืนยันค่าและไปกิจกรรมถัดไป →" : "ยืนยันค่าและไปขั้นตอน REFLECT →"));
+  panel.appendChild(btnRow);
+
+  setTimeout(()=>{
+    if(act.kind==="weight3") updateApplyLiveA1A3A5(act, st);
+    else if(act.kind==="threshold3") updateApplyLiveA2(act, st);
+    else if(act.kind==="threshold2") updateApplyLiveA4(act, st);
+  }, 0);
+
+  return panel;
+}
+
+function setAccuracyReadout(actId, correct, total){
+  const acc = pct((correct/total)*100);
+  const numEl = document.getElementById("accnum_"+actId);
+  const wrapEl = document.getElementById("acc_"+actId);
+  if(numEl) numEl.textContent = acc + "% (" + correct + "/" + total + ")";
+  if(wrapEl) wrapEl.className = "accuracy-readout" + (acc===100 ? " perfect" : "");
+  if(state.applyResults[actId]) state.applyResults[actId].accuracy = acc;
+}
+
+function updateApplyLiveA1A3A5(act, st){
+  const lo = act.thresholds.lo, hi = act.thresholds.hi;
+  let correct = 0;
+  const rows = act.missions.map(m=>{
+    const s = scoreOf(m.f, st.weights);
+    const pred = label3(s, lo, hi);
+    const match = pred === m.trueLabel;
+    if(match) correct++;
+    return {name:m.name, score:pct(s), pred, truth:m.trueLabel, match};
+  });
+  setAccuracyReadout(act.id, correct, act.missions.length);
+  const table = el("table",{class:"mission-table"},
+    el("tr",{}, el("th",{},"รายการ"), el("th",{},"คะแนนคำนวณได้"), el("th",{},"ผลทำนาย"), el("th",{},"ผลจริง"), el("th",{},"")),
+    rows.map(r=>el("tr",{},
+      el("td",{}, r.name),
+      el("td",{class:"mono"}, r.score),
+      el("td",{}, el("span",{class:"tag-pill tag-"+r.pred}, labelThai(r.pred))),
+      el("td",{}, el("span",{class:"tag-pill tag-"+r.truth}, labelThai(r.truth))),
+      el("td",{class: r.match?"match-yes":"match-no"}, r.match?"✓ ตรงกัน":"✗ ไม่ตรง")
+    ))
+  );
+  const tw = document.getElementById("table_"+act.id);
+  if(tw){ tw.innerHTML=""; tw.appendChild(table); }
+}
+
+function updateApplyLiveA2(act, st){
+  const lo = st.thresholds.lo, hi = st.thresholds.hi;
+  let correct = 0;
+  const rows = act.missions.map(m=>{
+    const pred = label3(m.score, lo, hi);
+    const match = pred === m.trueLabel;
+    if(match) correct++;
+    return {name:m.name, score:m.score, pred, truth:m.trueLabel, match};
+  });
+  setAccuracyReadout(act.id, correct, act.missions.length);
+  const table = el("table",{class:"mission-table"},
+    el("tr",{}, el("th",{},"รายการ"), el("th",{},"คะแนนความเสี่ยง"), el("th",{},"ผลทำนาย"), el("th",{},"ผลจริง"), el("th",{},"")),
+    rows.map(r=>el("tr",{},
+      el("td",{}, r.name),
+      el("td",{class:"mono"}, r.score),
+      el("td",{}, el("span",{class:"tag-pill tag-"+r.pred}, labelThai(r.pred))),
+      el("td",{}, el("span",{class:"tag-pill tag-"+r.truth}, labelThai(r.truth))),
+      el("td",{class: r.match?"match-yes":"match-no"}, r.match?"✓ ตรงกัน":"✗ ไม่ตรง")
+    ))
+  );
+  const tw = document.getElementById("table_"+act.id);
+  if(tw){ tw.innerHTML=""; tw.appendChild(table); }
+}
+
+function updateApplyLiveA4(act, st){
+  const th = st.threshold;
+  let correct = 0;
+  const rows = act.scenarios.map(s=>{
+    const pred = s.danger < th ? "GO" : "WAIT";
+    const match = pred === s.trueDecision;
+    if(match) correct++;
+    return {name:s.name, danger:s.danger, pred, truth:s.trueDecision, match};
+  });
+  setAccuracyReadout(act.id, correct, act.scenarios.length);
+  const table = el("table",{class:"mission-table"},
+    el("tr",{}, el("th",{},"สถานการณ์"), el("th",{},"ดัชนีอันตราย"), el("th",{},"การตัดสินใจ"), el("th",{},"ผลจริง"), el("th",{},"")),
+    rows.map(r=>el("tr",{},
+      el("td",{}, r.name),
+      el("td",{class:"mono"}, r.danger),
+      el("td",{}, el("span",{class:"tag-pill tag-"+r.pred}, r.pred)),
+      el("td",{}, el("span",{class:"tag-pill tag-"+r.truth}, r.truth)),
+      el("td",{class: r.match?"match-yes":"match-no"}, r.match?"✓ ตรงกัน":"✗ ไม่ตรง")
+    ))
+  );
+  const tw = document.getElementById("table_"+act.id);
+  if(tw){ tw.innerHTML=""; tw.appendChild(table); }
+}
+
+/* =========================================================
+   RENDER: REFLECT
+   ========================================================= */
+function renderReflect(){
+  const panel = el("div",{class:"panel reflect-accent"});
+  panel.appendChild(el("div",{class:"eyebrow", style:"--accent:#6FCF97"}, el("span",{class:"dot"}), "REFLECT · ประเมินตนเอง"));
+  panel.appendChild(el("h2",{class:"kicker-title"},"สะท้อนสิ่งที่ได้เรียนรู้"));
+  panel.appendChild(el("p",{class:"lede"},"ส่วนนี้ไม่มีคำตอบถูกหรือผิด ประเมินจากความครบถ้วนและความลึกของคำตอบ ตอบตามความเป็นจริงของตนเอง"));
+
+  REFLECT_LIKERT.forEach((stmt, idx)=>{
+    const key = "lk"+idx;
+    const item = el("div",{class:"likert-item"});
+    item.appendChild(el("p",{}, stmt));
+    const scale = el("div",{class:"likert-scale"});
+    const labels = ["ไม่เห็นด้วยอย่างยิ่ง","ไม่เห็นด้วย","เห็นด้วย","เห็นด้วยอย่างยิ่ง"];
+    labels.forEach((lab,li)=>{
+      const opt = el("label",{class:"likert-opt"});
+      const inp = el("input",{type:"radio", name:key, onchange:()=>{ state.reflectLikert[key]=li+1; render(); }});
+      if(state.reflectLikert[key]===li+1) inp.checked = true;
+      opt.appendChild(inp);
+      opt.appendChild(el("span",{}, lab));
+      scale.appendChild(opt);
+    });
+    item.appendChild(scale);
+    panel.appendChild(item);
+  });
+
+  REFLECT_OPEN.forEach((q)=>{
+    const item = el("div",{class:"likert-item"});
+    item.appendChild(el("p",{}, q.text));
+    const ta = el("textarea",{id:"ta_"+q.id, placeholder:"เขียนคำตอบของคุณที่นี่..."});
+    ta.value = state.reflectOpen[q.id] || "";
+    const wc = el("div",{class:"word-count", id:"wc_"+q.id}, (state.reflectOpen[q.id]||"").trim().length + " ตัวอักษร");
+    ta.addEventListener("input", (e)=>{
+      state.reflectOpen[q.id] = e.target.value;
+      wc.textContent = e.target.value.trim().length + " ตัวอักษร";
+      updateReflectSubmitState();
+    });
+    item.appendChild(ta);
+    item.appendChild(wc);
+    panel.appendChild(item);
+  });
+
+  const canSubmit = reflectIsComplete();
+
+  const btnRow = el("div",{class:"btn-row"});
+  btnRow.appendChild(el("button",{class:"btn btn-ghost", onclick:()=>{ state.screen="apply"; state.applyIdx=APPLY_ACTIVITIES.length-1; render(); }},"← ย้อนกลับ"));
+  btnRow.appendChild(el("button",{class:"btn btn-primary", id:"reflectSubmitBtn", disabled:!canSubmit, onclick:()=>{
+    finishAndSubmit();
+  }}, "ส่งคำตอบและดูรายงานผล →"));
+  panel.appendChild(btnRow);
+  panel.appendChild(el("div",{class:"help-note", id:"reflectHelpNote", style: canSubmit ? "display:none;" : ""},"กรุณาตอบให้ครบทุกข้อ (Likert ทั้ง 4 ข้อ และคำถามปลายเปิดทั้ง 2 ข้อ) ก่อนส่งคำตอบ"));
+  return panel;
+}
+
+function reflectIsComplete(){
+  const likertDone = REFLECT_LIKERT.every((_,idx)=>state.reflectLikert["lk"+idx]!==undefined);
+  const openDone = REFLECT_OPEN.every(q=>(state.reflectOpen[q.id]||"").trim().length>0);
+  return likertDone && openDone;
+}
+
+function updateReflectSubmitState(){
+  const canSubmit = reflectIsComplete();
+  const btn = document.getElementById("reflectSubmitBtn");
+  const note = document.getElementById("reflectHelpNote");
+  if(btn){ if(canSubmit) btn.removeAttribute("disabled"); else btn.setAttribute("disabled",""); }
+  if(note){ note.style.display = canSubmit ? "none" : ""; }
+}
+
+/* =========================================================
+   SCORING
+   ========================================================= */
+/* น้ำหนักของแต่ละภาระงานภายในขั้น LEARN:
+   ภาระงานแบบเลือกตอบ (1-6) ภาระงานละ 1 หน่วย = 6 หน่วย
+   ภาระงานปฏิบัติลากวาง (7-10) ภาระงานละ 2 หน่วย = 8 หน่วย  → รวม 14 หน่วย
+   ภาระงานลากวางให้คะแนนตามสัดส่วนช่องที่วางถูก (partial credit) */
+function isPracticalTask(t){ return t.kind==="circuit"||t.kind==="blocks"||t.kind==="fireblocks"; }
+function learnTaskWeight(t){ return isPracticalTask(t) ? 2 : 1; }
+function learnTaskFraction(t){
+  if(!t.kind || t.kind==="mc"){
+    return state.learnAnswers[t.id]===t.question.correct ? 1 : 0;
+  }
+  const ans = state.dragAnswers[t.id] || {};
+  const correct = t.slots.filter(s=>ans[s.id]===s.correct).length;
+  return correct / t.slots.length;
+}
+
+function computeScores(){
+  const showCorrect = SHOW_QUESTIONS.filter(q=>state.showAnswers[q.id]===q.correct).length;
+  const showScore = pct((showCorrect/SHOW_QUESTIONS.length)*100);
+
+  let learnUnitsEarned = 0, learnUnitsTotal = 0;
+  LEARN_TASKS.forEach(t=>{
+    const w = learnTaskWeight(t);
+    learnUnitsTotal += w;
+    learnUnitsEarned += learnTaskFraction(t) * w;
+  });
+  const learnScore = pct((learnUnitsEarned/learnUnitsTotal)*100);
+  const learnMcCorrect = LEARN_TASKS.filter(t=>(!t.kind||t.kind==="mc") && state.learnAnswers[t.id]===t.question.correct).length;
+  const learnMcTotal = LEARN_TASKS.filter(t=>!t.kind||t.kind==="mc").length;
+  const learnTaskDetail = LEARN_TASKS.filter(t=>isPracticalTask(t)).map(t=>{
+    const ans = state.dragAnswers[t.id] || {};
+    const c = t.slots.filter(s=>ans[s.id]===s.correct).length;
+    return {id:t.id, correct:c, total:t.slots.length};
+  });
+
+  const applyAccuracies = APPLY_ACTIVITIES.map(a=> (state.applyResults[a.id] && state.applyResults[a.id].accuracy) || 0);
+  const applyScore = pct(applyAccuracies.reduce((a,b)=>a+b,0)/APPLY_ACTIVITIES.length);
+
+  const likertPoints = REFLECT_LIKERT.reduce((acc,_,idx)=> acc + (state.reflectLikert["lk"+idx]!==undefined ? 20 : 0), 0); // 4*20=80
+  const openPoints = REFLECT_OPEN.reduce((acc,q)=>{
+    const chars = (state.reflectOpen[q.id]||"").trim().length;
+    return acc + (chars>=40 ? 10 : (chars>0 ? 5 : 0)); // 2*10=20
+  }, 0);
+  const reflectScore = pct(likertPoints + openPoints);
+
+  // สัดส่วนล่าสุด: LEARN มี 10 ภาระงาน (6 เลือกตอบ + 4 ปฏิบัติ) จึงเพิ่มเป็น 45%
+  // APPLY ลดจาก 35% เป็น 30% · SHOW 10% · REFLECT 15% รวม 100%
+  const overall = pct(showScore*0.10 + learnScore*0.45 + applyScore*0.30 + reflectScore*0.15);
+  let level = 1, levelLabel = "ระดับ 1 — ควรพัฒนาเพิ่มเติม (Needs Improvement)", levelClass="L1";
+  if(overall>=85){ level=4; levelLabel="ระดับ 4 — ขั้นสูง (Advanced)"; levelClass="L4"; }
+  else if(overall>=70){ level=3; levelLabel="ระดับ 3 — ชำนาญ (Proficient)"; levelClass="L3"; }
+  else if(overall>=50){ level=2; levelLabel="ระดับ 2 — พื้นฐาน (Basic)"; levelClass="L2"; }
+
+  return {showScore, learnScore, applyScore, reflectScore, overall, level, levelLabel, levelClass,
+    showCorrect, learnUnitsEarned:pct(learnUnitsEarned), learnUnitsTotal, learnMcCorrect, learnMcTotal, learnTaskDetail};
+}
+
+/* =========================================================
+   SUBMIT
+   ========================================================= */
+function finishAndSubmit(){
+  stopAnim();
+  state.scores = computeScores();
+  state.screen = "report";
+  render();
+  if(countdownIntervalId){ clearInterval(countdownIntervalId); countdownIntervalId = null; }
+  submitToSheet(state.scores);
+}
+
+/* =========================================================
+   บันทึกผลลง Google Sheet ผ่าน universal logger (code.gs)
+   payload ต้องมีฟิลด์ "sheet" เพื่อบอกแท็บปลายทาง
+   object ซ้อน (learn_detail ฯลฯ) ฝั่ง Apps Script จะ flatten
+   เป็นคอลัมน์ย่อยให้เอง เช่น learn_detail_task1
+   ========================================================= */
+function buildPayload(scores){
+  const learnDetail = {}, testRuns = {};
+  LEARN_TASKS.forEach((t, i)=>{
+    learnDetail["task" + (i+1)] = pct(learnTaskFraction(t) * 100);
+    if(isPracticalTask(t)) testRuns["task" + (i+1)] = state.testRuns[t.id] || 0;
+  });
+  const applyDetail = {};
+  APPLY_ACTIVITIES.forEach((a, i)=>{
+    applyDetail["activity" + (i+1)] =
+      (state.applyResults[a.id] && state.applyResults[a.id].accuracy !== undefined)
+        ? state.applyResults[a.id].accuracy : 0;
+  });
+  const durationSec = state.startTime ? Math.round((Date.now() - state.startTime)/1000) : 0;
+
+  return {
+    sheet: CONFIG.sheetName,                 // ← บอกแท็บปลายทางให้ universal logger
+    timestamp: new Date().toISOString(),
+    scenario: CONFIG.scenario,
+    user: state.name,
+    grade: state.grade,
+    show: scores.showScore,
+    learn: scores.learnScore,
+    apply: scores.applyScore,
+    reflect: scores.reflectScore,
+    overall: scores.overall,
+    level: scores.level,
+    levelName: scores.levelLabel,
+    learn_detail: learnDetail,
+    apply_detail: applyDetail,
+    test_runs: testRuns,
+    show_correct: scores.showCorrect,
+    show_total: SHOW_QUESTIONS.length,
+    learn_units_earned: scores.learnUnitsEarned,
+    learn_units_total: scores.learnUnitsTotal,
+    duration_sec: durationSec,
+    timedOut: !!state.timedOut
+  };
+}
+
+function submitToSheet(scores){
+  if(state.submitted) return;               // กันการบันทึกซ้ำโดยไม่ตั้งใจ
+  state.submitted = true;
+  sendPayload(buildPayload(scores));
+}
+
+function setSaveStatus(text, cls){
+  const el0 = document.getElementById("saveStatus");
+  if(el0){ el0.textContent = text; el0.className = "save-status" + (cls ? " " + cls : ""); }
+}
+
+function sendPayload(payload){
+  setSaveStatus("กำลังบันทึกผลลง Google Sheet (แท็บ " + CONFIG.sheetName + ")...");
+  // ใช้ Content-Type: text/plain เพื่อให้เป็น simple request ไม่เกิด CORS preflight
+  fetch(CONFIG.webhookUrl, {
+    method: "POST",
+    headers: { "Content-Type": "text/plain;charset=utf-8" },
+    body: JSON.stringify(payload)
+  })
+  .then(r => r.json().catch(()=>({ result:"unknown" })))
+  .then(res => {
+    if(res && res.result === "success"){
+      setSaveStatus("บันทึกผลเรียบร้อยแล้ว ✓  (แท็บ " + (res.sheet || CONFIG.sheetName) +
+                    (res.row ? " แถวที่ " + res.row : "") + ")", "ok");
+      saveLocalHistory(payload);
+      renderHistory();
+    } else if(res && res.result === "error"){
+      setSaveStatus("เซิร์ฟเวอร์แจ้งข้อผิดพลาด: " + (res.error || "ไม่ทราบสาเหตุ"), "fail");
+      showRetry(payload);
+    } else {
+      // ส่งสำเร็จแต่อ่านผลลัพธ์ไม่ได้ (เบราว์เซอร์บล็อกการอ่าน response ข้ามโดเมน)
+      setSaveStatus("ส่งข้อมูลแล้ว แต่ไม่สามารถอ่านผลตอบกลับได้ — โปรดตรวจสอบแท็บ " +
+                    CONFIG.sheetName + " ในสเปรดชีตอีกครั้ง", "warn");
+      saveLocalHistory(payload);
+      renderHistory();
+    }
+  })
+  .catch(() => {
+    setSaveStatus("ไม่สามารถบันทึกผลอัตโนมัติได้ (เครือข่ายขัดข้องหรือยังไม่ได้ deploy Web App) — ผลของคุณยังแสดงครบถ้วนด้านล่าง", "fail");
+    saveLocalHistory(payload);
+    renderHistory();
+    showRetry(payload);
+  });
+}
+
+function showRetry(payload){
+  const wrap = document.getElementById("retryWrap");
+  if(!wrap) return;
+  wrap.innerHTML = "";
+  wrap.appendChild(el("button",{class:"btn btn-ghost", style:"padding:8px 16px;font-size:.84rem;", onclick:()=>{
+    wrap.innerHTML = "";
+    sendPayload(payload);          // ส่ง payload ชุดเดิม ไม่สร้างใหม่ เพื่อไม่ให้ timestamp เพี้ยน
+  }},"ลองบันทึกอีกครั้ง"));
+  wrap.appendChild(el("button",{class:"btn btn-ghost", style:"padding:8px 16px;font-size:.84rem;margin-left:8px;", onclick:()=>{
+    navigator.clipboard && navigator.clipboard.writeText(JSON.stringify(payload, null, 2));
+    setSaveStatus("คัดลอกข้อมูลผลสอบ (JSON) ไปยังคลิปบอร์ดแล้ว — ส่งให้ครูบันทึกด้วยตนเองได้", "warn");
+  }},"คัดลอกผลเป็น JSON"));
+}
+
+/* ---------- ประวัติการทำแบบทดสอบ (เก็บในเครื่องผู้ใช้) ----------
+   universal logger ใน code.gs รองรับเฉพาะการเขียน (doPost)
+   ส่วน doGet คืนเพียงสถานะของ Web App จึงดึงประวัติจากเซิร์ฟเวอร์ไม่ได้
+   แอปจึงเก็บประวัติไว้ในเบราว์เซอร์ของผู้เข้าสอบเอง                     */
+function readLocalHistory(){
+  try{
+    const raw = localStorage.getItem(CONFIG.historyKey);
+    const arr = raw ? JSON.parse(raw) : [];
+    return Array.isArray(arr) ? arr : [];
+  }catch(e){ return []; }
+}
+function saveLocalHistory(payload){
+  try{
+    const arr = readLocalHistory();
+    // payload.timestamp คงที่ตลอดอายุของผลชุดนี้ จึงใช้กันไม่ให้บันทึกซ้ำเมื่อกด "ลองบันทึกอีกครั้ง"
+    if(arr.some(r => r.timestamp === payload.timestamp)) return;
+    arr.push({
+      timestamp: payload.timestamp,
+      user: payload.user,
+      grade: payload.grade,
+      overall: payload.overall,
+      levelName: payload.levelName
+    });
+    while(arr.length > 20) arr.shift();      // เก็บไว้ไม่เกิน 20 ครั้งล่าสุด
+    localStorage.setItem(CONFIG.historyKey, JSON.stringify(arr));
+  }catch(e){ /* โหมดส่วนตัวของเบราว์เซอร์อาจไม่อนุญาต — ข้ามไป */ }
+}
+function fmtTime(iso){
+  try{
+    const d = new Date(iso);
+    const pad = n => String(n).padStart(2,"0");
+    return d.getFullYear() + "-" + pad(d.getMonth()+1) + "-" + pad(d.getDate()) +
+           " " + pad(d.getHours()) + ":" + pad(d.getMinutes());
+  }catch(e){ return iso || "-"; }
+}
+function renderHistory(){
+  const wrap = document.getElementById("historyWrap");
+  if(!wrap) return;
+  const rows = readLocalHistory().filter(r => (r.user||"").trim() === (state.name||"").trim());
+  wrap.innerHTML = "";
+  if(rows.length === 0){
+    wrap.appendChild(el("p",{class:"lede"},"ยังไม่มีประวัติการทำแบบทดสอบก่อนหน้าของชื่อนี้ในเครื่องนี้"));
+    return;
+  }
+  wrap.appendChild(el("table",{class:"hist-table"},
+    el("tr",{}, el("th",{},"วันเวลา"), el("th",{},"ระดับชั้น"), el("th",{},"คะแนนรวม"), el("th",{},"ระดับคุณภาพ")),
+    rows.slice().reverse().map(r=>el("tr",{},
+      el("td",{}, fmtTime(r.timestamp)),
+      el("td",{}, r.grade || "-"),
+      el("td",{class:"mono"}, (r.overall!==undefined ? r.overall + "%" : "-")),
+      el("td",{}, r.levelName || "-")
+    ))
+  ));
+}
+
+/* =========================================================
+   RENDER: REPORT
+   ========================================================= */
+function renderReport(){
+  const s = state.scores || computeScores();
+  const wrap = el("div",{});
+  wrap.appendChild(el("h1",{}, "รายงานผลภารกิจ RESCUE-BOT"));
+  wrap.appendChild(el("p",{class:"lede"}, el("b",{}, state.name), " · ระดับชั้น " + state.grade));
+
+  const band = el("div",{class:"overall-band"});
+  band.appendChild(el("div",{class:"score-big"}, "คะแนนรวมทั้งฉบับ"));
+  band.appendChild(el("div",{class:"level "+s.levelClass}, s.overall + "%"));
+  band.appendChild(el("div",{class:"score-big"}, s.levelLabel));
+  wrap.appendChild(band);
+
+  const grid = el("div",{class:"score-grid"});
+  grid.appendChild(scoreCard("SHOW", s.showScore, "#3FCFB4", s.showCorrect+"/"+SHOW_QUESTIONS.length+" ข้อถูก"));
+  grid.appendChild(scoreCard("LEARN", s.learnScore, "#F2A93B", s.learnUnitsEarned+"/"+s.learnUnitsTotal+" หน่วยคะแนน"));
+  grid.appendChild(scoreCard("APPLY", s.applyScore, "#FF6A39", "เฉลี่ยความแม่นยำ 5 กิจกรรม"));
+  grid.appendChild(scoreCard("REFLECT", s.reflectScore, "#6FCF97", "ความครบถ้วนของคำตอบ"));
+  wrap.appendChild(grid);
+
+  const learnDetail = el("div",{class:"panel"});
+  learnDetail.appendChild(el("h3",{},"รายละเอียดคะแนน LEARN รายภาระงาน"));
+  const lTable = el("table",{class:"mission-table"},
+    el("tr",{}, el("th",{},"ภาระงาน"), el("th",{},"ประเภท"), el("th",{},"ผลงาน"), el("th",{},"น้ำหนัก")),
+    LEARN_TASKS.map(t=>{
+      const isDrag = isPracticalTask(t);
+      let resultText;
+      if(isDrag){
+        const ans = state.dragAnswers[t.id] || {};
+        const c = t.slots.filter(s=>ans[s.id]===s.correct).length;
+        resultText = "วางถูก " + c + "/" + t.slots.length + " ช่อง";
+        const runs = state.testRuns[t.id] || 0;
+        const res = state.testResult[t.id];
+        resultText += " · ทดสอบ " + runs + " ครั้ง";
+        if(res){
+          let passed;
+          if(t.kind==="blocks") passed = res.valveClosed;
+          else if(t.kind==="fireblocks") passed = res.success;
+          else passed = (res.wrong === 0);
+          resultText += (passed ? " · ครั้งล่าสุดผ่าน" : " · ครั้งล่าสุดยังไม่ผ่าน");
+        }
+      } else {
+        resultText = state.learnAnswers[t.id]===t.question.correct ? "ตอบถูก" : "ตอบผิด";
+      }
+      return el("tr",{},
+        el("td",{}, t.title),
+        el("td",{}, isDrag ? "ปฏิบัติ (ลากวาง)" : "เลือกตอบ"),
+        el("td",{class:"mono"}, resultText),
+        el("td",{class:"mono"}, learnTaskWeight(t) + " หน่วย")
+      );
+    })
+  );
+  learnDetail.appendChild(lTable);
+  wrap.appendChild(learnDetail);
+
+  const applyDetail = el("div",{class:"panel"});
+  applyDetail.appendChild(el("h3",{},"รายละเอียดความแม่นยำ APPLY รายกิจกรรม"));
+  const dTable = el("table",{class:"mission-table"},
+    el("tr",{}, el("th",{},"กิจกรรม"), el("th",{},"ความแม่นยำ")),
+    APPLY_ACTIVITIES.map(a=>el("tr",{},
+      el("td",{}, a.title),
+      el("td",{class:"mono"}, (state.applyResults[a.id] && state.applyResults[a.id].accuracy!==undefined ? state.applyResults[a.id].accuracy : 0)+"%")
+    ))
+  );
+  applyDetail.appendChild(dTable);
+  wrap.appendChild(applyDetail);
+
+  const savePanel = el("div",{class:"panel"});
+  savePanel.appendChild(el("h3",{},"การบันทึกผล"));
+  savePanel.appendChild(el("div",{class:"save-status", id:"saveStatus"}, "กำลังเตรียมบันทึกผล..."));
+  savePanel.appendChild(el("div",{id:"retryWrap", style:"margin-top:10px;"}));
+  savePanel.appendChild(el("h4",{style:"margin-top:18px;"},"ประวัติการทำแบบทดสอบของคุณ"));
+  savePanel.appendChild(el("div",{id:"historyWrap"}));
+  setTimeout(renderHistory, 0);
+  wrap.appendChild(savePanel);
+
+  const btnRow = el("div",{class:"btn-row"});
+  btnRow.appendChild(el("button",{class:"btn btn-primary", onclick:()=>{
+    location.reload();
+  }}, "เริ่มทำแบบทดสอบใหม่"));
+  wrap.appendChild(btnRow);
+
+  return wrap;
+}
+
+function scoreCard(label, val, color, sub){
+  const c = el("div",{class:"score-card", style:"border-top:3px solid "+color+";"});
+  c.appendChild(el("div",{class:"label"}, label));
+  c.appendChild(el("div",{class:"val", style:"color:"+color+";"}, val+"%"));
+  c.appendChild(el("div",{class:"label"}, sub));
+  return c;
+}
+
+function progressBar(idx, total, labelPrefix){
+  const wrap = el("div",{class:"progress-wrap"});
+  const track = el("div",{class:"progress-track"});
+  track.appendChild(el("div",{class:"progress-fill", style:"width:"+(((idx+1)/total)*100)+"%;"}));
+  wrap.appendChild(track);
+  wrap.appendChild(el("div",{class:"progress-label"}, labelPrefix + " " + (idx+1) + "/" + total));
+  return wrap;
+}
+
+/* =========================================================
+   BOOT
+   ========================================================= */
+render();
+</script>
+</body>
+</html>
